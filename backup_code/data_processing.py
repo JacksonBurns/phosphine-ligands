@@ -209,12 +209,12 @@ def onehot(column):
     return np.array(list_one_hot).reshape(len(column), -1)
     
 
-if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('data_proc_config')
-    args = parser.parse_args()
+def main(data_proc_config):
+    # parser = ArgumentParser()
+    # parser.add_argument('data_proc_config')
+    # args = parser.parse_args()
 
-    configs = json.load(open(args.data_proc_config))
+    configs = json.load(open(data_proc_config))
     xl_file = configs.get('xl_file')
     target_column = configs.get('target_column')
     descrptr_columns = configs.get('descrptr_columns')

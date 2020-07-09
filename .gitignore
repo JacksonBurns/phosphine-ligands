@@ -1,0 +1,6 @@
+
+*.json
+~$data_matrix_builder.xlsx
+*.json
+.vscode/settings.json
+~$*

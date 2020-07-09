@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 import data_processing
 
 
-processed_data = data_processing.main()
+processed_data = data_processing.main('config.json')
 X, y = processed_data['X'], processed_data['y']
 descriptor_names = processed_data['descriptor_names']
 family_column = processed_data['family_int']
@@ -34,6 +34,7 @@ def do_family_separation(vectrs=[0, 1, 2]):
 
     pca_reduced = PCA()
     X_pca = pca_reduced.fit_transform(X_std)
+
     
     # plot 3D plot
     fig = plt.figure()
