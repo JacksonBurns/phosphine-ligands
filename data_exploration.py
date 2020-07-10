@@ -45,7 +45,6 @@ def plot_pairplot(skip_frequency=True, save_location=None):
                 plt.savefig(os.path.join(save_location, fname))
             plt.close()
 
-#plot_pairplot(save_location=r'D:\Research\Phosphine-Ligands\Figs\pair_plots')
 
 def do_PCA(save_location=None, variance_needed=0.90):
     """
@@ -59,8 +58,12 @@ def do_PCA(save_location=None, variance_needed=0.90):
     scaler = StandardScaler()
     pca = PCA()
 
+
+
     X_std = scaler.fit_transform(X)
+    
     pca.fit(X_std)
+    
     def get_cumulative(in_list):
         """
 
@@ -108,8 +111,7 @@ def do_PCA(save_location=None, variance_needed=0.90):
     plt.close()
     return n_eigenvectors_needed
 
-#n_eigenvectors = do_PCA(save_location=r'D:\Research\Phosphine-Ligands\Figs', \
- #   variance_needed=0.90)
+
 
 def check_correlation_with_target(descriptor_name):
     """
@@ -137,19 +139,23 @@ if __name__ == '__main__':
     y = pickle.load(open(args.y, "rb"))
     descriptor_names = pickle.load(open(args.descriptor_names, "rb"))
     
-    for col in range(X.shape[1]):
-        plt.hist(X[:, col], color='green')
-        plt.ylabel('Frequency', fontsize=28)
-        plt.xlabel(descriptor_names[col], fontsize=28)
-        plt.xticks(fontsize=20)
-        plt.yticks(fontsize=20)
-        plt.show()
-        continue
-        plt.scatter(X[:, col], y, c='red', alpha=0.4, s=100)
-        plt.xlabel(descriptor_names[col], fontsize=20)
-        plt.ylabel('Response', fontsize=20)
-        plt.show()
+    # for col in range(X.shape[1]):
+    #     plt.hist(X[:, col], color='green')
+    #     plt.ylabel('Frequency', fontsize=28)
+    #     plt.xlabel(descriptor_names[col], fontsize=28)
+    #     plt.xticks(fontsize=20)
+    #     plt.yticks(fontsize=20)
+    #     plt.show()
+    #     continue
+    #     plt.scatter(X[:, col], y, c='red', alpha=0.4, s=100)
+    #     plt.xlabel(descriptor_names[col], fontsize=20)
+    #     plt.ylabel('Response', fontsize=20)
+    #     plt.show()
 
+    
+    # plot_pairplot(save_location=r'C:\Users\jwb1j\OneDrive\Desktop\Working Folder\Research 2\ML Collab\Week 4\Figures\traditional')
+    n_eigenvectors = do_PCA(save_location=r'C:\Users\jwb1j\OneDrive\Desktop\Working Folder\Research 2\ML Collab\Week 4\Figures\traditional', \
+        variance_needed=0.95)
 
 
 

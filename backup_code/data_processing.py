@@ -229,7 +229,8 @@ def main(data_proc_config):
     out_dict = {
         'X': X,
         'y': y,
-        'descriptor_names': descriptor_names
+        'descriptor_names': descriptor_names,
+        'family_int': df['family'].values
     }
 
     print('******* STATISTICS ********')
@@ -253,4 +254,10 @@ def main(data_proc_config):
     pickle.dump(descriptor_names, open(descriptor_names_path, "wb"))
 
 
+    return out_dict
+
+
+
+if __name__ == "__main__":
+    main(r'data_proc_config.json')
 

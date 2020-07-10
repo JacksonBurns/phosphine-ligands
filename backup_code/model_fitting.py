@@ -13,21 +13,24 @@ from sklearn.linear_model import LinearRegression, LassoCV
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from argparse import ArgumentParser
+import pickle
+
 
 import data_processing
 from helper_functions import plot_parity
 
-processed_data = data_processing.main()
-X, y = processed_data['X'], processed_data['y'].reshape(-1,1)
-descriptor_names = processed_data['descriptor_names']
-family_idx = processed_data['family_int']
-# Mask Family
-mask_id = 1
-idx = []
-for id, family_id in enumerate(family_idx):
-    if family_id == mask_id:
-        idx.append(id)
-X, y = X[idx], y[idx] 
+# processed_data = data_processing.main()
+# X, y = processed_data['X'], processed_data['y'].reshape(-1,1)
+# descriptor_names = processed_data['descriptor_names']
+# # family_idx = processed_data['family_int']
+# # # Mask Family
+# # mask_id = 1
+# # idx = []
+# # for id, family_id in enumerate(family_idx):
+# #     if family_id == mask_id:
+# #         idx.append(id)
+# # X, y = X[idx], y[idx] 
 # pyplot parameters
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rc('xtick',labelsize=16)
@@ -41,14 +44,13 @@ def do_PCR(variance_needed=0.90):
     n_eigenvectors: int: Number of eigenvectors to retain. If set to None all
         are used. Defult None
     """
-
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
-    X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.80)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.95)
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
-    y_std_train = y_scaler.fit_transform(y_train)
-    y_std_test = y_scaler.transform(y_test)
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
     y_sigma = y_scaler.scale_
     pca = PCA()
     pca.fit(X_std_test)
@@ -91,8 +93,8 @@ def do_PCR(variance_needed=0.90):
     print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
         y_pred=y_predict))
     print('R2 of training data: ', lm.score(X_std_train, y_std_train))
-    plot_parity(x=y_test, y=y_predict, xlabel='True E/Z Ratio', \
-        ylabel='Predicted E/Z Ratio')
+    plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
+        ylabel='Predicted Selectivity')
 
 
 
@@ -106,12 +108,13 @@ def do_LASSO(cv=10):
     """
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
-    X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.60, random_state=23)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.90, random_state=23)
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
-    y_std_train = y_scaler.fit_transform(y_train)
-    y_std_test = y_scaler.transform(y_test)
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
     y_sigma = y_scaler.scale_
+
 
     lasso = LassoCV(cv=cv)
     lasso.fit(X_std_train, y_std_train)
@@ -119,14 +122,25 @@ def do_LASSO(cv=10):
     print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
         y_pred=y_predict))
     print('R2 of training data: ', lasso.score(X_std_train, y_std_train))
-    plot_parity(x=y_test, y=y_predict, xlabel='True E/Z Ratio', \
-        ylabel='Predicted E/Z Ratio')
+    plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
+        ylabel='Predicted Selectivity')
     
     
     
 
 
 def main():
+    parser = ArgumentParser()
+    parser.add_argument('-x', help='Path of X.p')
+    parser.add_argument('-y', help='Path of y.p')
+    parser.add_argument('-dn', '--descriptor_names', 
+                        help='Path of descriptor_names.p')
+    args = parser.parse_args()
+    global X, y, descriptor_names
+    X = pickle.load(open(args.x, "rb"))
+    y = pickle.load(open(args.y, "rb"))
+    descriptor_names = pickle.load(open(args.descriptor_names, "rb"))
+
     #do_PCR(variance_needed=0.90)
     do_LASSO(cv=10)
 
