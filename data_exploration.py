@@ -139,23 +139,23 @@ if __name__ == '__main__':
     y = pickle.load(open(args.y, "rb"))
     descriptor_names = pickle.load(open(args.descriptor_names, "rb"))
     
-    # for col in range(X.shape[1]):
-    #     plt.hist(X[:, col], color='green')
-    #     plt.ylabel('Frequency', fontsize=28)
-    #     plt.xlabel(descriptor_names[col], fontsize=28)
-    #     plt.xticks(fontsize=20)
-    #     plt.yticks(fontsize=20)
-    #     plt.show()
-    #     continue
-    #     plt.scatter(X[:, col], y, c='red', alpha=0.4, s=100)
-    #     plt.xlabel(descriptor_names[col], fontsize=20)
-    #     plt.ylabel('Response', fontsize=20)
-    #     plt.show()
+    for col in range(X.shape[1]):
+        # plt.hist(X[:, col], color='green')
+        # plt.ylabel('Frequency', fontsize=28)
+        # plt.xlabel(descriptor_names[col], fontsize=28)
+        # plt.xticks(fontsize=20)
+        # plt.yticks(fontsize=20)
+        # plt.show()
+        # continue
+        plt.scatter(X[:, col], y, c='red', alpha=0.4, s=100)
+        plt.xlabel(descriptor_names[col], fontsize=20)
+        plt.ylabel('Response', fontsize=20)
+        plt.show()
 
     
     # plot_pairplot(save_location=r'C:\Users\jwb1j\OneDrive\Desktop\Working Folder\Research 2\ML Collab\Week 4\Figures\traditional')
-    n_eigenvectors = do_PCA(save_location=r'C:\Users\jwb1j\OneDrive\Desktop\Working Folder\Research 2\ML Collab\Week 4\Figures\traditional', \
-        variance_needed=0.95)
+    # n_eigenvectors = do_PCA(save_location=r'C:\Users\jwb1j\OneDrive\Desktop\Working Folder\Research 2\ML Collab\Week 4\Figures\traditional', \
+    #    variance_needed=0.95)
 
 
 

@@ -230,7 +230,7 @@ def main(data_proc_config):
         'X': X,
         'y': y,
         'descriptor_names': descriptor_names,
-        'family_int': df['family'].values
+        'family_int': df['Family'].values
     }
 
     print('******* STATISTICS ********')

@@ -59,6 +59,7 @@ def plot_parity(x, y, **kwargs):
         's': 10,
         'c': 'green',
     }
+    
     if kwargs is not None:
         plot_params.update(kwargs)
     plt.rcParams['svg.fonttype'] = 'none'
@@ -77,6 +78,11 @@ def plot_parity(x, y, **kwargs):
                    fontsize=plot_params.get('ylabel_fontsize', 20))
     plt.xticks(fontsize=plot_params.get('xticksize',24))
     plt.yticks(fontsize=plot_params.get('yticksize',24))
+
+    plt.plot([1, 1],[-100, 100],color='black',linestyle='--')
+    plt.plot([-100, 100],[1, 1],color='black',linestyle='--')
+
+
     if plot_params.get('show_plot', True):
         plt.show()
     return plt

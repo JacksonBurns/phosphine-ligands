@@ -1,4 +1,4 @@
-{"xl_file": "C:\\Users\\jwb1j\\OneDrive\\Documents\\GitHub\\phosphine-ligands\\branched-linear selectivity data\\selectivity_data_builder_v1.xlsx", 
+{"xl_file": "C:\\Users\\jwb1j\\OneDrive\\Documents\\GitHub\\phosphine-ligands\\branched-linear selectivity data\\selectivity_data_builder_v2.xlsx", 
     
     "target_column": "selectivity", 
     "descrptr_columns": ["Bond Lengths_angstrom1", 
@@ -28,4 +28,4 @@
         "APT Charge5", 
         "31P-NMR Magnetic Shielding (ppm)"], 
     "bins_upper_limit": [700, 800, 900, 1000, 1100, 1200],
-    "output_directory": "C:\\Users\\jwb1j\\OneDrive\\Documents\\GitHub\\phosphine-ligands\\branched-linear selectivity data"}
+    "output_directory": "C:\\Users\\jwb1j\\OneDrive\\Documents\\GitHub\\phosphine-ligands\\backup_code"}

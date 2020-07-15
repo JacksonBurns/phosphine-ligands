@@ -40,18 +40,18 @@ def do_family_separation(vectrs=[0, 1, 2]):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     colors = ['blue', 'red', 'orange', '#FF00F0','black']
-    ligand_names = ['1-1','1-2','1-4','1-8','1-9','1-10','1-11','1-12','1-13','2-1','2-2','2-4','2-10','2-13','2-14','2-15','2-19','2-20','2-28','2-31','3-3','3-4','3-6','3-8','3-9','3-10','3-12','4-1','4-2','4-4','4-9','4-10','4-11','4-12','4-13','4-14','4-15','4-16','4-17','4-19','4-20','4-21','4-23','4-24','4-25','4-28','4-29']
-    family_column = [2,2,2,2,2,3,2,3,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,0,1,2,2,2,2,1,2,2,2,1,1,2,1,2,2,1,2,0,2]
+    ligand_names = ['4-L28','3-L12','4-L23','4-L11','4-L15','4-L16','4-L24','1-L13','3-L8','4-L1','4-L19','4-L12','2-L13','4-L20','4-L21','3-L4','3-L10','3-L9','4-L9','4-L17','3-L3','4-L10']
+    family_column = [0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2]
     #plt.legend()
     c = [colors[int(family)] for family in family_column] # conditional coloring
     ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
-        c=c, alpha=0.5, s=20, label=ligand_names)
-    print("xdata")
-    print(X_pca[:, vectrs[0]])
-    print("ydata")
-    print(X_pca[:, vectrs[1]])
-    print("zdata")
-    print(X_pca[:, vectrs[2]])
+        c=c, alpha=0.5, s=20)
+    # print("xdata")
+    # print(X_pca[:, vectrs[0]])
+    # print("ydata")
+    # print(X_pca[:, vectrs[1]])
+    # print("zdata")
+    # print(X_pca[:, vectrs[2]])
     # write ligand labels
     for (x, y, z) in zip(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]]):
         ax.text(
