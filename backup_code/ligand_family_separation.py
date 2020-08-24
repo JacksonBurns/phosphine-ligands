@@ -40,8 +40,8 @@ def do_family_separation(vectrs=[0, 1, 2]):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     colors = ['blue', 'red', 'orange', '#FF00F0','black']
-    ligand_names = ['4-L28','3-L12','4-L23','4-L11','4-L15','4-L16','4-L24','1-L13','3-L8','4-L1','4-L19','4-L12','2-L13','4-L20','4-L21','3-L4','3-L10','3-L9','4-L9','4-L17','3-L3','4-L10']
-    family_column = [0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2]
+    ligand_names = ['1-1','1-2','1-4','1-6','1-7','1-8','1-9','1-10','1-11','1-12','1-13','2-1','2-2','2-3','2-4','2-5','2-7','2-8','2-9','2-10','2-12','2-13','2-14','2-15','2-16','2-20','2-21','2-22','2-23','2-24','2-25','2-26','2-27','2-29','2-30','2-31','3-1','3-2','3-3','3-4','3-5','3-6','3-8','3-9','3-10','3-12','3-13','3-16','4-1','4-2','4-3','4-4','4-5','4-6','4-7','4-8','4-9','4-10','4-11','4-12','4-13','4-14','4-15','4-16','4-17','4-18','4-19','4-20','4-21','4-24','4-25','4-26','4-27','4-28','4-29','4-30','4-31']
+    family_column = [2,2,2,2,2,2,2,2,2,3,2,2,2,2,2,2,2,3,2,2,2,2,2,2,2,2,2,2,2,3,2,2,0,2,2,2,2,2,1,1,2,2,2,2,2,1,2,2,1,2,2,2,2,2,2,2,2,2,1,2,2,2,2,1,2,2,2,2,2,2,2,3,2,1,2,2,0]
     #plt.legend()
     c = [colors[int(family)] for family in family_column] # conditional coloring
     ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
@@ -53,15 +53,11 @@ def do_family_separation(vectrs=[0, 1, 2]):
     # print("zdata")
     # print(X_pca[:, vectrs[2]])
     # write ligand labels
-    for (x, y, z) in zip(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]]):
-        ax.text(
-            x,
-            y,
-            z,
-            ligand_names.pop(0),
-            zdir=(1,1,1),
-            fontsize=10
-        )
+    # for (x, y, z) in zip(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]]):
+    #     ax.text(x,y,z,
+    #         ligand_names.pop(0),
+    #         zdir=(1,1,1),
+    #         fontsize=10)
 
     ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
     ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)

@@ -18,15 +18,18 @@ from data_post_process import bin_to_families, get_family_membership_idx, \
     get_train_test_idx
 from helper_functions import plot_parity
 
+from argparse import ArgumentParser
+import pickle
+
 
 # RC PArams
 plt.rcParams['svg.fonttype'] = 'none'
 plt.xticks(fontsize=24)
 plt.yticks(fontsize=24)
-processed_data = data_processing.main()
+processed_data = data_processing.main(r'data_proc_config.json')
 X, y = processed_data['X'], processed_data['y'].reshape(-1,1)
-descriptor_names = processed_data['descriptor_names']
-family_idx = processed_data['family_int']
+# descriptor_names = processed_data['descriptor_names']
+# family_idx = processed_data['family_int']
 
 
 def process_X_y(training_size, random_seed, stratified=False):
@@ -113,12 +116,22 @@ def do_gpr(**kwargs):
     plt.scatter(x=test_idx, y=y_test_scaled, c='black', marker='x', label='True Values')
     plt.fill_between(x=test_idx, y1=ci_upper, y2=ci_lower, alpha=0.4, color='blue', label='One SDV.')
     plt.xlabel('Training Example', fontsize=20)
-    plt.ylabel('E/Z Prediction', fontsize=20)
+    plt.ylabel('Selectivity Prediction', fontsize=20)
     plt.legend()
     plt.show()
 
 def main():
-    do_gpr(random_seed=10, training_size=1, stratified=False)
+    # parser = ArgumentParser()
+    # parser.add_argument('-x', help='Path of X.p')
+    # parser.add_argument('-y', help='Path of y.p')
+    # parser.add_argument('-dn', '--descriptor_names', 
+    #                     help='Path of descriptor_names.p')
+    # args = parser.parse_args()
+    # global X, y, descriptor_names
+    # X = pickle.load(open(args.x, "rb"))
+    # y = pickle.load(open(args.y, "rb"))
+    # descriptor_names = pickle.load(open(args.descriptor_names, "rb"))
+    do_gpr(random_seed=4200, training_size=0.99, stratified=True)
 
 
 if __name__ == '__main__':
