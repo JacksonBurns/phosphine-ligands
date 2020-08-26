@@ -51,8 +51,8 @@ def generate_input(df, descrptr_columns, bins_upper_limit):
 
     # Define Globals
     frequency_void_flag = -1
-    frequency_columns = [ f'IR Frequency{frequency_index}' \
-        for frequency_index in range(1, 7)]
+    # frequency_columns = [ f'IR Frequency{frequency_index}' \
+    #     for frequency_index in range(1, 7)]
     bond_length_columns = [f'Bond Lengths_angstrom{index}' \
         for index in range(1,4)]
     bond_angle_columns = [f'Bond Angles_degrees{index}' \
@@ -65,8 +65,8 @@ def generate_input(df, descrptr_columns, bins_upper_limit):
         for index in range(1,6)]
 
     # transform NaN frequencies to frequency_void_flag
-    for column in frequency_columns:
-        df.loc[df[column].isna(), column] = frequency_void_flag
+    # for column in frequency_columns:
+    #     df.loc[df[column].isna(), column] = frequency_void_flag
     
     def analyze_frequencies(show_plot=False):
         """
@@ -225,8 +225,10 @@ if __name__ == '__main__':
     df = pd.read_excel(xl_file)
     df = process_data(df, target_column, descrptr_columns)
     y = df[target_column].values
-    X, descriptor_names = generate_input(df, descrptr_columns, bins_upper_limit)
-    X = impute_missing_values(X, method='median')
+    # X, descriptor_names = generate_input(df, descrptr_columns, bins_upper_limit)
+    # X = impute_missing_values(X, method='median')
+    descriptor_names = descrptr_columns
+    X = df[descrptr_columns].to_numpy()
     out_dict = {
         'X': X,
         'y': y,
