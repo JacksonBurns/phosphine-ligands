@@ -80,11 +80,11 @@ def model(X,y,feature_weights, sample_weights,variance_needed=0.95,cv=10,train_s
     lm.fit(X_std_train, y_std_train)
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
-    print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
-        y_pred=y_predict))
-    print('R2 of training data: ', lm.score(X_std_train, y_std_train))
-    plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
-        ylabel='Predicted Selectivity')
+    # print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
+    #     y_pred=y_predict))
+    # print('R2 of training data: ', lm.score(X_std_train, y_std_train))
+    # plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
+    #     ylabel='Predicted Selectivity')
     out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
 
     # """
@@ -119,11 +119,11 @@ def model(X,y,feature_weights, sample_weights,variance_needed=0.95,cv=10,train_s
     ridge = RidgeCV()
     ridge.fit(X_std_train, y_std_train.ravel(), sample_weight=s_weights_train.ravel())
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in ridge.predict(X_std_test)]
-    print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
-        y_pred=y_predict))
-    print('R2 of training data: ', ridge.score(X_std_train, y_std_train))
-    plt = plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
-        ylabel='Predicted Selectivity')
+    # print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
+    #     y_pred=y_predict))
+    # print('R2 of training data: ', ridge.score(X_std_train, y_std_train))
+    # plt = plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
+    #     ylabel='Predicted Selectivity')
     out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
     return out_maes
 
@@ -133,19 +133,21 @@ def main():
     feature_weights = pickle.load(open(r'C:\Users\jwb1j\OneDrive\Documents\GitHub\phosphine-ligands\fragmented_approach\weighted\feature_weights.p', "rb"))
     sample_weights = pickle.load(open(r'C:\Users\jwb1j\OneDrive\Documents\GitHub\phosphine-ligands\fragmented_approach\weighted\sample_weights.p', "rb"))
     WPCAmaes = []; RidgeCVmaes = [];
-    for i in range(1):
+    for i in range(1000):
+        if i%50==0:
+            print(i)
         maes = model(X, y, feature_weights, sample_weights, variance_needed=0.95, train_size=0.80, cv=10)
         WPCAmaes.append(maes[0])
         RidgeCVmaes.append(maes[1])
 
-    # plt.figure()
-    # plt.hist([WPCAmaes, RidgeCVmaes],rwidth=0.9,bins=[i/4 for i in range(0,16)],align='left',label=['WPCR','RidgeCV'])
-    # plt.legend(loc='best')
-    # plt.title('WPCA vs. RidgeCV Distribution of MAE (1000 runs, 80:20 training:test)')
-    # plt.ylabel('Frequency')
-    # plt.xlabel('MAE')
-    # plt.xticks([i/4 for i in range(0,16)],[str(round(i/4,2)) for i in range(0,16)])
-    # plt.show()
+    plt.figure()
+    plt.hist([WPCAmaes, RidgeCVmaes],rwidth=0.9,bins=[i/4 for i in range(0,16)],align='left',label=['WPCR','RidgeCV'])
+    plt.legend(loc='best')
+    plt.title('WPCA vs. RidgeCV Distribution of MAE (1000 runs, 80:20 training:test)')
+    plt.ylabel('Frequency')
+    plt.xlabel('MAE')
+    plt.xticks([i/4 for i in range(0,16)],[str(round(i/4,2)) for i in range(0,16)])
+    plt.show()
 
 if __name__ == '__main__':
     main()
