@@ -38,6 +38,7 @@ if __name__ == '__main__':
     sample_weights = weights
     feature_weights = np.repeat(weights, len(df[descrptr_columns].columns), axis=1)  # copy columns across to match input data
 
+    print(X.shape)
     X_path = os.path.join(out_dir, 'X.p')
     pickle.dump(X, open(X_path, "wb"))
     y_path = os.path.join(out_dir, 'y.p')
