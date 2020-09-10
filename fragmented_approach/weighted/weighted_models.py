@@ -44,6 +44,7 @@ def model(X,y,feature_weights, sample_weights,variance_needed=0.95,cv=10,train_s
     
     """
     out_maes = []
+    out_err = []
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
@@ -86,32 +87,35 @@ def model(X,y,feature_weights, sample_weights,variance_needed=0.95,cv=10,train_s
     # plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
     #     ylabel='Predicted Selectivity')
     out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
+    out_err.append(count_terrible(y_test,y_predict))
 
-    # """
-    # LASSO - no weights
-    # """
-    # lasso = LassoCV(cv=cv,max_iter=100000)
-    # lasso.fit(X_std_train, y_std_train.ravel())
-    # y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lasso.predict(X_std_test)]
+    """
+    LASSO - no weights
+    """
+    lasso = LassoCV(cv=cv,max_iter=100000)
+    lasso.fit(X_std_train, y_std_train.ravel())
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lasso.predict(X_std_test)]
     # print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
     #     y_pred=y_predict))
     # print('R2 of training data: ', lasso.score(X_std_train, y_std_train))
     # plt = plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
     #     ylabel='Predicted Selectivity')
-    # # out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
+    out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
+    out_err.append(count_terrible(y_test,y_predict))
 
-    # """
-    # Ridge (Tikhonov) - weighted
-    # """
-    # ridge = Ridge()
-    # ridge.fit(X_std_train, y_std_train.ravel(), sample_weight=s_weights_train.ravel())
-    # y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in ridge.predict(X_std_test)]
+    """
+    Ridge (Tikhonov) - weighted
+    """
+    ridge = Ridge()
+    ridge.fit(X_std_train, y_std_train.ravel(), sample_weight=s_weights_train.ravel())
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in ridge.predict(X_std_test)]
     # print('Mean Absolute Error: ', mean_absolute_error(y_true=y_test, \
     #     y_pred=y_predict))
     # print('R2 of training data: ', ridge.score(X_std_train, y_std_train))
     # plt = plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
     #     ylabel='Predicted Selectivity')
-    # # out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
+    out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
+    out_err.append(count_terrible(y_test,y_predict))
 
     """
     Ridge (Tikhonov) CV - weighted
@@ -125,28 +129,72 @@ def model(X,y,feature_weights, sample_weights,variance_needed=0.95,cv=10,train_s
     # plt = plot_parity(x=y_test, y=y_predict, xlabel='True Selectivity', \
     #     ylabel='Predicted Selectivity')
     out_maes.append(mean_absolute_error(y_true=y_test, y_pred=y_predict))
-    return out_maes
+    out_err.append(count_terrible(y_test,y_predict))
+    return out_maes, out_err
+
+def count_terrible(test,predict):
+    terrible = 0
+    for (t,p) in zip(test,predict):
+        if (t>1 and p<1) or (p>1 and t<1):
+            terrible = terrible + 1
+    return terrible
 
 def main():
     X = pickle.load(open(r'C:\Users\jwb1j\OneDrive\Documents\GitHub\phosphine-ligands\fragmented_approach\weighted\X.p', "rb"))
     y = pickle.load(open(r'C:\Users\jwb1j\OneDrive\Documents\GitHub\phosphine-ligands\fragmented_approach\weighted\y.p', "rb"))
     feature_weights = pickle.load(open(r'C:\Users\jwb1j\OneDrive\Documents\GitHub\phosphine-ligands\fragmented_approach\weighted\feature_weights.p', "rb"))
     sample_weights = pickle.load(open(r'C:\Users\jwb1j\OneDrive\Documents\GitHub\phosphine-ligands\fragmented_approach\weighted\sample_weights.p', "rb"))
-    WPCAmaes = []; RidgeCVmaes = [];
+    WPCAmaes = []; RidgeCVmaes = []; Ridgemaes = []; LASSOmaes = [];
+    WPCAerr = []; RidgeCVerr = []; Ridgeerr = []; LASSOerr = [];
     for i in range(1000):
         if i%50==0:
             print(i)
-        maes = model(X, y, feature_weights, sample_weights, variance_needed=0.95, train_size=0.80, cv=10)
+        maes, err = model(X, y, feature_weights, sample_weights, variance_needed=0.95, train_size=0.80, cv=10)
         WPCAmaes.append(maes[0])
-        RidgeCVmaes.append(maes[1])
+        LASSOmaes.append(maes[1])
+        Ridgemaes.append(maes[2])
+        RidgeCVmaes.append(maes[3])
+        WPCAerr.append(maes[0])
+        LASSOerr.append(maes[1])
+        Ridgeerr.append(maes[2])
+        RidgeCVerr.append(maes[3])
 
+    F = 20;
     plt.figure()
-    plt.hist([WPCAmaes, RidgeCVmaes],rwidth=0.9,bins=[i/4 for i in range(0,16)],align='left',label=['WPCR','RidgeCV'])
+    plt.hist([WPCAmaes, RidgeCVmaes],rwidth=0.9,bins=[i for i in range(0,F)],align='left',label=['WPCR','RidgeCV'])
     plt.legend(loc='best')
     plt.title('WPCA vs. RidgeCV Distribution of MAE (1000 runs, 80:20 training:test)')
     plt.ylabel('Frequency')
     plt.xlabel('MAE')
-    plt.xticks([i/4 for i in range(0,16)],[str(round(i/4,2)) for i in range(0,16)])
+    plt.xticks([i for i in range(0,F)],[str(i) for i in range(0,F)])
+    plt.show()
+
+    plt.figure()
+    plt.hist([WPCAerr, RidgeCVerr],rwidth=0.9,bins=[i for i in range(0,17)],align='left',label=['WPCA','RidgeCV'])
+    plt.legend(loc='best')
+    plt.title('WPCA vs. RidgeCV Distribution of Gross Errors out of 16 (1000 runs, 80:20 training:test)')
+    plt.ylabel('Frequency')
+    plt.xlabel('Count of Gross Errors')
+    plt.xticks([i for i in range(0,17)],[str(i) for i in range(0,17)])
+    plt.show()
+
+    plt.figure()
+    plt.hist([LASSOmaes, Ridgemaes],rwidth=0.9,bins=[i for i in range(0,F)],align='left',label=['LASSO','Ridge'])
+    plt.legend(loc='best')
+    plt.title('LASOO vs. Ridge Distribution of MAE (1000 runs, 80:20 training:test)')
+    plt.ylabel('Frequency')
+    plt.xlabel('MAE')
+    plt.xticks([i for i in range(0,F)],[str(i) for i in range(0,F)])
+    # plt.xticks([i/4 for i in range(0,16)],[str(round(i/4,2)) for i in range(0,16)])
+    plt.show()
+
+    plt.figure()
+    plt.hist([LASSOerr, Ridgeerr],rwidth=0.9,bins=[i for i in range(0,17)],align='left',label=['LASSO','Ridge'])
+    plt.legend(loc='best')
+    plt.title('LASSO vs. Ridge Distribution of Gross Errors out of 16 (1000 runs, 80:20 training:test)')
+    plt.ylabel('Frequency')
+    plt.xlabel('Count of Gross Errors')
+    plt.xticks([i for i in range(0,17)],[str(i) for i in range(0,17)])
     plt.show()
 
 if __name__ == '__main__':
