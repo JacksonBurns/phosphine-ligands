@@ -79,8 +79,8 @@ def plot_parity(x, y, **kwargs):
     plt.xticks(fontsize=plot_params.get('xticksize',24))
     plt.yticks(fontsize=plot_params.get('yticksize',24))
 
-    plt.plot([1, 1],[-100, 100],color='black',linestyle='--')
-    plt.plot([-100, 100],[1, 1],color='black',linestyle='--')
+    plt.plot([0, 0],[-100, 100],color='black',linestyle='--')
+    plt.plot([-100, 100],[0, 0],color='black',linestyle='--')
 
 
     if plot_params.get('show_plot', True):

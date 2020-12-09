@@ -84,19 +84,25 @@ def plot_parity(x, y,labels=None, **kwargs):
     plt.plot([0, 0],[-100, 100],color='black',linestyle='--')
     plt.plot([-100, 100],[0, 0],color='black',linestyle='--')
 
-    i = 0;
-    for ix,iy in zip(x,y):
-        plt.annotate(str(labels[i]), # this is the text
-                    (ix,iy), # this is the point to label
-                    textcoords="offset points", # how to position the text
-                    xytext=(0,10), # distance from text to points (x,y)
-                    ha='center') # horizontal alignment can be left, right or center
-        
-        i = i + 1;
+    if(labels):
+        i = 0;
+        for ix,iy in zip(x,y):
+            plt.annotate(str(labels[i]), # this is the text
+                        (ix,iy), # this is the point to label
+                        textcoords="offset points", # how to position the text
+                        xytext=(0,10), # distance from text to points (x,y)
+                        ha='center') # horizontal alignment can be left, right or center
+            
+            i = i + 1;
 
 
     if plot_params.get('show_plot', True):
         plt.show()
     return plt
 
-
+def countGrossErrors(test,predict):
+    GE = 0
+    for (t,p) in zip(test,predict):
+        if (t>0 and p<0) or (p>0 and t<0):
+            GE = GE + 1
+    return GE
