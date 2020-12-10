@@ -4,6 +4,7 @@ from copy import deepcopy as dc
 # plotting
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from pandas.plotting import parallel_coordinates
 # data manipulation
 import numpy as np
 import pandas as pd
@@ -294,6 +295,7 @@ def doKMeansClusteringWithRBFKPCAWith3Components(X,y,sample_weights,vectrs=[0,1,
     '''
     kmeans = KMeans(n_clusters=4)
     kmeans.fit(dc(X_pca), sample_weight=dc(sample_weights).ravel())
+
     # plot actual values and clustering side by side
     fig = plt.figure()
     ax = fig.add_subplot(1, 2, 1, projection='3d')
@@ -306,49 +308,33 @@ def doKMeansClusteringWithRBFKPCAWith3Components(X,y,sample_weights,vectrs=[0,1,
     # clustering
     ax = fig.add_subplot(1, 2, 2, projection='3d')
     colors = ['red','green','blue','orange']
-    c = [colors[i-1] for i in kmeans.labels_] # conditional coloring
+    c = [colors[i] for i in kmeans.labels_] # conditional coloring
     ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
         c=c, alpha=0.75, s=50)
     ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
     ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)
     ax.set_zlabel(f'PC {vectrs[2] + 1}', fontsize=20)
+    for label in range(0,4):
+        print('Cluster {} ({}) average and stdev:'.format(label,colors[label]))
+        print(np.average(y[kmeans.labels_ == label]))
+        print(np.std(y[kmeans.labels_ == label]))
+        print('Max in this Cluster: ',np.max(y[kmeans.labels_ == label]))
+
     plt.show()
 
 def doKMeansClustering(X,y,sample_weights,output=False,varianceNeeded=0.95):
     """
     K-Means Clustering
     """
-    kmeans = KMeans()
-    kmeans.fit(X, sample_weight=sample_weights.ravel())
-
-    print(kmeans.labels_, kmeans.cluster_centers_)
-    
-    '''
-    # find where adequate variance is explained
-    cum_var = np.cumsum(wpca.explained_variance_ratio_)  # sum across
-    n_eigenvectors_needed = bisect.bisect_left(cum_var, varianceNeeded) + 1  # fastest way according to: https://stackoverflow.com/questions/2236906/first-python-list-index-greater-than-x
-
-    # do reduced wPCA
-    wpca_reduced = WPCA(n_components=n_eigenvectors_needed)
-    X_std_train = wpca_reduced.fit_transform(X_std_train, weights=f_weights_train)
-    X_std_test = wpca_reduced.transform(X_std_test, weights=f_weights_test)
-
-    # do regression
-    lm = LinearRegression()
-    lm.fit(X_std_train, y_std_train)
-    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
-    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
-    
-    if(output and countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.25 and MAE(y_true=y_test, y_pred=y_predict)<0.25):
-        print('{} explained by {} eigen-vectors'.format(cum_var[n_eigenvectors_needed-1], n_eigenvectors_needed))
-        print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
-        print('R2 of training data: ', lm.score(X_std_train, y_std_train))
-        print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
-        print('Random seed for tts: ', randState)
-        plot_parity(x=y_test, y=y_predict, labels=None, xlabel='True Selectivity',ylabel='Predicted Selectivity')
-
-    return lm.score(X_std_train, y_std_train),MAE(y_true=y_test, y_pred=y_predict),countGrossErrors(y_test,y_predict)/len(y_predict)
-    '''
+    scaler = StandardScaler()
+    X_std = scaler.fit_transform(X)
+    kmeans = KMeans(n_clusters=3)
+    kmeans.fit(X_std, sample_weight=sample_weights.ravel())
+    for label in range(0,3):
+        print('Cluster {} average and stdev:'.format(label))
+        print(np.average(y[kmeans.labels_ == label]))
+        print(np.std(y[kmeans.labels_ == label]))
+        print('Max in this Cluster: ',np.max(y[kmeans.labels_ == label]))
 
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01)
@@ -361,85 +347,9 @@ if __name__ == '__main__':
         # R2, mae, GE = doKPCA(dc(X),dc(y),output=True)
         # R2s.append(R2); maes.append(mae); GEs.append(GE);
     # doKPCASeparation(dc(X),dc(y))
-    doKMeansClusteringWithRBFKPCAWith3Components(dc(X),dc(y),dc(sample_weights))
+    # doKMeansClusteringWithRBFKPCAWith3Components(dc(X),dc(y),dc(sample_weights))
     # doKMeansClustering(dc(X),dc(y),dc(sample_weights))
-        
     
-    '''
-    RBF KPCA w/ 3 Components:
-    Mean Absolute Error:  0.25915683583389704
-    R2 of training data:  0.3532508522886406
-    % Gross Errors:  0.0
-    Random seed for tts:  270252416
-    Mean Absolute Error:  0.26303986364507775
-    R2 of training data:  0.3689261497471472
-    % Gross Errors:  0.0
-    Random seed for tts:  220232570
-    Mean Absolute Error:  0.2843560462696692
-    R2 of training data:  0.3455074211212217
-    % Gross Errors:  0.0
-    Random seed for tts:  945107195
-    Mean Absolute Error:  0.3194705614025062
-    R2 of training data:  0.3391373329330386
-    % Gross Errors:  0.0
-    Random seed for tts:  536367301
-    Average %GE: 0.26 Standard Deviation: 0.09
-
-    RBF KPCA w/ 4 Components:
-    Mean Absolute Error:  0.2819107574618129
-    R2 of training data:  0.3977701391835511
-    % Gross Errors:  0.0
-    Random seed for tts:  449119043
-    Mean Absolute Error:  0.30894735554882496
-    R2 of training data:  0.35324491555535087
-    % Gross Errors:  0.0
-    Random seed for tts:  82702285
-    Mean Absolute Error:  0.2205499763350409
-    R2 of training data:  0.37968097604140394
-    % Gross Errors:  0.0
-    Random seed for tts:  776208407
-    Average %GE: 0.26 Standard Deviation: 0.09
-
-    WPCR:
-    Best results so far:
-    0.9505432719216261 explained by 3 eigen-vectors
-    Mean Absolute Error:  0.2533452596352515
-    R2 of training data:  0.2707783943385329
-    % Gross Errors:  0.0
-    Random seed for tts:  632130344
-
-    0.9662726637817706 explained by 5 eigen-vectors
-    Mean Absolute Error:  0.23734940231762897
-    R2 of training data:  0.260765038246244
-    % Gross Errors:  0.0
-    Random seed for tts:  766178200
-
-    0.9587033761934431 explained by 4 eigen-vectors
-    Mean Absolute Error:  0.23388469610427456
-    R2 of training data:  0.27047264455249775
-    % Gross Errors:  0.0
-    Random seed for tts:  355646495
-
-    Distribution of MAE's:
-    Average %GE: 0.25 Standard Deviation: 0.09
-
-    RidgeCV:
-    0.37+-.10
-
-    LASSO:
-    Average %GE: 0.25 Standard Deviation: 0.09
-
-    RBF KPCA:
-    Average %GE: 0.36 Standard Deviation: 0.10
-
-    Cosine KPCA:
-    Average %GE: 0.37 Standard Deviation: 0.11
-
-    Poly d2:
-    Average %GE: 0.37 Standard Deviation: 0.10
-    Poly d3:
-
-    '''
     # plt.figure()
     # plt.hist(GEs,rwidth=0.9,bins=[i/20 for i in range(0,20)],align='left')
     # plt.title('RBF-KPCA Distribution of %GE (1000 runs, 80:20 training:test)')
@@ -449,3 +359,107 @@ if __name__ == '__main__':
     # plt.show()
     # print("""Average %GE: {:.2f} Standard Deviation: {:.2f}""".format(np.average(GEs),np.std(GEs)))
 
+"""
+3-Means Clustering on Scaled Data:
+Cluster 0 average and stdev:
+0.30469411214281666
+0.40053104923738647
+Max in this Cluster:  1.0
+Cluster 1 average and stdev:
+-0.23992603326009596
+0.4550882101556402
+Max in this Cluster:  0.9242463079717002
+Cluster 2 average and stdev:
+-0.38072314747564323
+0.3468476014150291
+Max in this Cluster:  0.1530147587934812
+
+K-Means Clustering on RBF 4-Component PCA
+Cluster 0 (red) average and stdev:
+0.36942100042981535
+0.35070508549836693
+Cluster 1 (green) average and stdev:
+-0.23043421338312967
+0.5191292407314995
+Cluster 2 (blue) average and stdev:
+-0.2162061107937193
+0.4289383248262524
+Cluster 3 (orange) average and stdev:
+-0.3453850894798298
+0.3604713124172736
+
+
+RBF KPCA w/ 3 Components:
+Mean Absolute Error:  0.25915683583389704
+R2 of training data:  0.3532508522886406
+% Gross Errors:  0.0
+Random seed for tts:  270252416
+Mean Absolute Error:  0.26303986364507775
+R2 of training data:  0.3689261497471472
+% Gross Errors:  0.0
+Random seed for tts:  220232570
+Mean Absolute Error:  0.2843560462696692
+R2 of training data:  0.3455074211212217
+% Gross Errors:  0.0
+Random seed for tts:  945107195
+Mean Absolute Error:  0.3194705614025062
+R2 of training data:  0.3391373329330386
+% Gross Errors:  0.0
+Random seed for tts:  536367301
+Average %GE: 0.26 Standard Deviation: 0.09
+
+RBF KPCA w/ 4 Components:
+Mean Absolute Error:  0.2819107574618129
+R2 of training data:  0.3977701391835511
+% Gross Errors:  0.0
+Random seed for tts:  449119043
+Mean Absolute Error:  0.30894735554882496
+R2 of training data:  0.35324491555535087
+% Gross Errors:  0.0
+Random seed for tts:  82702285
+Mean Absolute Error:  0.2205499763350409
+R2 of training data:  0.37968097604140394
+% Gross Errors:  0.0
+Random seed for tts:  776208407
+Average %GE: 0.26 Standard Deviation: 0.09
+
+WPCR:
+Best results so far:
+0.9505432719216261 explained by 3 eigen-vectors
+Mean Absolute Error:  0.2533452596352515
+R2 of training data:  0.2707783943385329
+% Gross Errors:  0.0
+Random seed for tts:  632130344
+
+0.9662726637817706 explained by 5 eigen-vectors
+Mean Absolute Error:  0.23734940231762897
+R2 of training data:  0.260765038246244
+% Gross Errors:  0.0
+Random seed for tts:  766178200
+
+0.9587033761934431 explained by 4 eigen-vectors
+Mean Absolute Error:  0.23388469610427456
+R2 of training data:  0.27047264455249775
+% Gross Errors:  0.0
+Random seed for tts:  355646495
+
+Distribution of MAE's:
+Average %GE: 0.25 Standard Deviation: 0.09
+
+RidgeCV:
+0.37+-.10
+
+LASSO:
+Average %GE: 0.25 Standard Deviation: 0.09
+
+RBF KPCA:
+Average %GE: 0.36 Standard Deviation: 0.10
+
+Cosine KPCA:
+Average %GE: 0.37 Standard Deviation: 0.11
+
+Poly d2:
+Average %GE: 0.37 Standard Deviation: 0.10
+Poly d3:
+
+"""
