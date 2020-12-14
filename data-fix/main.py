@@ -230,13 +230,13 @@ def doKPCASeparation(X,y,vectrs=[0,1,2]):
     plt.show()
     print('Max PC1', y[np.argmax(X_kpca[:, 0])])
 
-def doKPCA(X,y,output=False,trainSize=0.8):
+def doKPCA(X,y,ligand_names,output=False,trainSize=0.8):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
     # split response, features, and weights into train and test set
     randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test = train_test_split(X, y, feature_weights, sample_weights, train_size=trainSize, random_state=randState)
+    X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test, _, ln = train_test_split(X, y, feature_weights, sample_weights, ligand_names, train_size=trainSize, random_state=randState)
     # scale features
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -249,7 +249,7 @@ def doKPCA(X,y,output=False,trainSize=0.8):
     Radial Basis Function Kernel Principal Component Regression
     """
     # instantiate weighted PCA, train
-    kpca = KernelPCA(kernel="rbf",n_components=3)
+    kpca = KernelPCA(kernel="rbf",n_components=4)
     X_std_train = kpca.fit_transform(X_std_train)
     X_std_test = kpca.transform(X_std_test)
 
@@ -259,16 +259,16 @@ def doKPCA(X,y,output=False,trainSize=0.8):
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
     
-    if(output and countGrossErrors(y_test,y_predict)/len(y_predict)==0):# and lm.score(X_std_train, y_std_train)>0.25 and MAE(y_true=y_test, y_pred=y_predict)<0.25):
+    if(output and countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.35 and MAE(y_true=y_test, y_pred=y_predict)<0.20):
         print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
         print('R2 of training data: ', lm.score(X_std_train, y_std_train))
         print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
         print('Random seed for tts: ', randState)
-        plot_parity(x=y_test, y=y_predict, labels=None, xlabel='True Selectivity',ylabel='Predicted Selectivity')
+        plot_parity(x=y_test, y=y_predict, labels=ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
     return lm.score(X_std_train, y_std_train),MAE(y_true=y_test, y_pred=y_predict),countGrossErrors(y_test,y_predict)/len(y_predict)
 
-def doKMeansClusteringWithRBFKPCAWith3Components(X,y,sample_weights,vectrs=[0,1,2]):
+def doKMeansClusteringWithKPCA(X,y,sample_weights,vectrs=[0,1,2]):
     # instantiate scalers
     x_scaler = StandardScaler()
     # scale features
@@ -340,14 +340,14 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01)
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; maes=[]; GEs=[];
-    # for i in range(0,1000):
+    # for i in range(0,10000):
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=False)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-        # R2, mae, GE = doKPCA(dc(X),dc(y),output=True)
+        # R2, mae, GE = doKPCA(dc(X),dc(y),dc(ligNames),output=True)
         # R2s.append(R2); maes.append(mae); GEs.append(GE);
     # doKPCASeparation(dc(X),dc(y))
-    # doKMeansClusteringWithRBFKPCAWith3Components(dc(X),dc(y),dc(sample_weights))
+    # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
     # doKMeansClustering(dc(X),dc(y),dc(sample_weights))
     
     # plt.figure()
@@ -374,7 +374,7 @@ Cluster 2 average and stdev:
 0.3468476014150291
 Max in this Cluster:  0.1530147587934812
 
-K-Means Clustering on RBF 4-Component PCA
+K-Means Clustering on RBF 3-Component PCA
 Cluster 0 (red) average and stdev:
 0.36942100042981535
 0.35070508549836693
@@ -422,6 +422,42 @@ R2 of training data:  0.37968097604140394
 % Gross Errors:  0.0
 Random seed for tts:  776208407
 Average %GE: 0.26 Standard Deviation: 0.09
+
+Mean Absolute Error:  0.1814146128716552
+R2 of training data:  0.3819042574118835
+% Gross Errors:  0.0
+Random seed for tts:  404994264
+Mean Absolute Error:  0.22850724914755016
+R2 of training data:  0.3805744044531153
+% Gross Errors:  0.0
+Random seed for tts:  675509436
+Mean Absolute Error:  0.1816055690023437
+R2 of training data:  0.3651971794096397
+% Gross Errors:  0.0
+Random seed for tts:  222984316
+
+Mean Absolute Error:  0.19716148549345128
+R2 of training data:  0.3587982346313736
+% Gross Errors:  0.0
+Random seed for tts:  475649123
+Mean Absolute Error:  0.18682496488248101
+R2 of training data:  0.3876984353979501
+% Gross Errors:  0.0
+Random seed for tts:  150029923
+Mean Absolute Error:  0.19950748807308485
+R2 of training data:  0.37626429037093834
+% Gross Errors:  0.0
+Random seed for tts:  41520904
+
+Mean Absolute Error:  0.19854339523087197
+R2 of training data:  0.3591234736678204
+% Gross Errors:  0.0
+Random seed for tts:  394590766
+
+Mean Absolute Error:  0.19964926049819112
+R2 of training data:  0.3848822686072071
+% Gross Errors:  0.0
+Random seed for tts:  454691077
 
 WPCR:
 Best results so far:

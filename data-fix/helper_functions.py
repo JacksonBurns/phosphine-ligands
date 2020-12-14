@@ -84,7 +84,7 @@ def plot_parity(x, y,labels=None, **kwargs):
     plt.plot([0, 0],[-100, 100],color='black',linestyle='--')
     plt.plot([-100, 100],[0, 0],color='black',linestyle='--')
 
-    if(labels):
+    if(labels is not None):
         i = 0;
         for ix,iy in zip(x,y):
             plt.annotate(str(labels[i]), # this is the text
