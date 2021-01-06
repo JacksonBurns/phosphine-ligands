@@ -23,6 +23,8 @@ from helper_functions import plot_parity, countGrossErrors
 from wpca import WPCA
 # model explaining
 import shap
+# scaffold splitter from chainer_chemistry
+from scaffold_split import get_scaffold_idxs
 
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
     """
@@ -245,7 +247,7 @@ def doKPCASeparation(X,y,vectrs=[0,1,2]):
     plt.show()
     print('Max PC1', y[np.argmax(X_kpca[:, 0])])
 
-def doKPCA(X,y,ligand_names,output=False,trainSize=0.8,heatMap=False,gamma=None,randSeed=None):
+def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=False,gamma=None,randSeed=None, splitter=None):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
@@ -254,7 +256,22 @@ def doKPCA(X,y,ligand_names,output=False,trainSize=0.8,heatMap=False,gamma=None,
         randState = randSeed
     else:
         randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test, _, ln = train_test_split(X, y, feature_weights, sample_weights, ligand_names, train_size=trainSize, random_state=randState)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(X, y, sample_weights, ligand_names, train_size=trainSize, random_state=randState)
+    elif splitter=='scaffold':
+        train_idxs, test_idxs = get_scaffold_idxs()
+        X_train = [X[i] for i in train_idxs]
+        X_test = [X[i] for i in test_idxs]
+        y_train = [y[i] for i in train_idxs]
+        y_test = [y[i] for i in test_idxs]
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        # s_weights_train
+        # s_weights_test = [X[i] for i in test_idxs]
+        ln_train = [ligand_names[i] for i in train_idxs]
+        ln = [ligand_names[i] for i in test_idxs]
+    else:
+        raise(NotImplementedError)
     # scale features
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -275,17 +292,18 @@ def doKPCA(X,y,ligand_names,output=False,trainSize=0.8,heatMap=False,gamma=None,
     # print(np.cumsum(explained_variance_ratio))
     # print(s_weights_train.shape)
 
-    print("Training Set: ", _)
-    print("Testing Set: ",ln)
+    # print("Training Set: ", ln_train)
+    # print("Testing Set: ",ln)
+    # print(len(ln_train)+len(ln))
 
     # do regression
     lm = LinearRegression()
-    lm.fit(X_std_train, y_std_train) # , sample_weight=s_weights_train.ravel())
+    lm.fit(X_std_train, y_std_train) #, sample_weight=s_weights_train.ravel())
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
 
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
 
-    if(output and r2_score(y_test,y_predict)>0.7): # countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.35 and MAE(y_true=y_test, y_pred=y_predict)<0.20):
+    if(output and r2_score(y_test,y_predict)>0.85): # countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.35 and MAE(y_true=y_test, y_pred=y_predict)<0.20):
         print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
         print('R2 of training data: ', lm.score(X_std_train, y_std_train))
         print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
@@ -419,11 +437,11 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2)
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
-    # for i in range(0,1000):
+    for i in range(0,10000):
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-    R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),output=True,heatMap=False, randSeed=837262349)
+        R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False)#, randSeed=837262349, splitter=None)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
