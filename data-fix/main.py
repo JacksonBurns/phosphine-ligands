@@ -44,6 +44,7 @@ def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
         
         # remove any data which does not have our yield cutoff
         if removeLessThan is not None:
+            # print("Input data set ({} total): ".format(len(df.index)),df[name_col])
             remove_idxs = [i for i in range(0,len(absYields)) if absYields[i]<removeLessThan]
             print("Removing the following ligands ({} total):".format(len(remove_idxs)), ', '.join(df[name_col].to_numpy()[remove_idxs]))
             df.drop(remove_idxs,inplace=True)
@@ -303,7 +304,7 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
 
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
 
-    if(output and r2_score(y_test,y_predict)>0.85): # countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.35 and MAE(y_true=y_test, y_pred=y_predict)<0.20):
+    if(output): # and r2_score(y_test,y_predict)>0.85): # countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.35 and MAE(y_true=y_test, y_pred=y_predict)<0.20):
         print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
         print('R2 of training data: ', lm.score(X_std_train, y_std_train))
         print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
@@ -437,11 +438,11 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2)
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
-    for i in range(0,10000):
+    # for i in range(0,10000):
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-        R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False)#, randSeed=837262349, splitter=None)
+    R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, randSeed=837262349)  # , splitter=None)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
