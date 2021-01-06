@@ -26,6 +26,12 @@ import shap
 # scaffold splitter from chainer_chemistry
 from scaffold_split import get_scaffold_idxs
 
+#### attempting autoML ####
+import sklearn.datasets
+import sklearn.metrics
+import autosklearn.regression
+####                   ####
+
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
     """
     Retrieves data from Excel file and optionally writes it out to serialized format
@@ -110,9 +116,9 @@ def familySeparation(X,y,ligand_names,vectrs=[0,1,2]):
     #         zdir=(1,1,1),
     #         fontsize=10)
 
-    ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
-    ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)
-    ax.set_zlabel(f'PC {vectrs[2] + 1}', fontsize=20)
+    # ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
+    # ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)
+    # ax.set_zlabel(f'PC {vectrs[2] + 1}', fontsize=20)
     plt.show()
     print('Max PC1', y[np.argmax(X_pca[:, 0])])
 
@@ -433,15 +439,41 @@ def doKMeansClustering(X,y,sample_weights,output=False,varianceNeeded=0.95):
         print(np.std(y[kmeans.labels_ == label]))
         print('Max in this Cluster: ',np.max(y[kmeans.labels_ == label]))
 
+def autoML(X,y):
+    # https://automl.github.io/auto-sklearn/master/examples/20_basic/example_regression.html
+    X_train, X_test, y_train, y_test = \
+        sklearn.model_selection.train_test_split(X, y, random_state=1)
+    
+    automl = autosklearn.regression.AutoSklearnRegressor(
+        time_left_for_this_task=600,
+        per_run_time_limit=60,
+        tmp_folder='/home/jackson/Desktop/git-repos/phosphine-ligands/autoML-tmp',
+        output_folder='/home/jackson/Desktop/git-repos/phosphine-ligands/autoML-out',
+        memory_limit=40000,
+        # max_models_on_disc=None,
+        # n_jobs=-1
+    )
+    automl.fit(X_train, y_train, dataset_name='PhosphineMLProject')
+
+    # Print the final ensemble constructed by auto-sklearn
+    print(automl.show_models())
+
+    # Get the Score of the final ensemble
+    predictions = automl.predict(X_test)
+    print("R2 score:", sklearn.metrics.r2_score(y_test, predictions))
+
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2)
+    
+    autoML(dc(X),dc(y))
+    
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
-    for i in range(0,10000):
+    # for i in range(0,10000):
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-        R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False)#, randSeed=837262349, splitter=None)
+        # R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False)#, randSeed=837262349, splitter=None)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
