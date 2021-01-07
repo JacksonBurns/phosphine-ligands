@@ -51,7 +51,7 @@ Random seed for tts:  196754445
 
 
 
-
+without any removed
 
 Mean Absolute Error:  0.1097024035526885
 R2 of training data:  0.4170457305297447

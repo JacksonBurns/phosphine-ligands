@@ -260,17 +260,37 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
     if splitter is None:
         X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(X, y, sample_weights, ligand_names, train_size=trainSize, random_state=randState)
     elif splitter=='scaffold':
+        # returns a list of indices for the two sets
         train_idxs, test_idxs = get_scaffold_idxs()
-        X_train = [X[i] for i in train_idxs]
-        X_test = [X[i] for i in test_idxs]
-        y_train = [y[i] for i in train_idxs]
-        y_test = [y[i] for i in test_idxs]
+
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+        
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
+        train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
+
+        # pull the new indices
+        train_idxs = [ligand_names.tolist().index(i) for i in train_names]
+        test_idxs = [ligand_names.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([X[i] for i in train_idxs])
+        X_test = np.array([X[i] for i in test_idxs])
+        y_train = np.array([y[i] for i in train_idxs])
+        y_test = np.array([y[i] for i in test_idxs])
         # f_weights_train
         # f_weights_test = [X[i] for i in test_idxs]
         # s_weights_train
         # s_weights_test = [X[i] for i in test_idxs]
-        ln_train = [ligand_names[i] for i in train_idxs]
-        ln = [ligand_names[i] for i in test_idxs]
+        ln_train = np.array([ligand_names[i] for i in train_idxs])
+        ln = np.array([ligand_names[i] for i in test_idxs])
+        
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
     else:
         raise(NotImplementedError)
     # scale features
@@ -442,7 +462,7 @@ if __name__ == '__main__':
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-    R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, randSeed=837262349)  # , splitter=None)
+    R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter='scaffold')  # , randSeed=837262349)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
