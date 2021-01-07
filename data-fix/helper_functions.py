@@ -13,6 +13,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
 
 
 class IterateSubdirectories(object):
@@ -52,6 +53,30 @@ def load_pickle(file, dir=None):
     X = pickle.load(open(fname, "rb"))
     return X
 
+def validationPlot(x, y, x_valid, y_valid, labels=None, valid_labels=None, **kwargs):
+
+    plt = plot_parity(x=x, y=y, labels=labels, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30,show_plot=False)
+
+    plt.scatter(x=x_valid, y=y_valid, alpha=1, s=40, c='orange', edgecolors='black', label='Internal Validation')
+    if(valid_labels is not None):
+        i = 0;
+        for ix,iy in zip(x_valid,y_valid):
+            if(countGrossErrors(ix,iy)>0):
+                color='red'
+            else:
+                color='black'
+            plt.annotate(str(valid_labels[i]), # this is the text
+                        (ix,iy), # this is the point to label
+                        textcoords="offset points", # how to position the text
+                        xytext=(0,-15), # distance from text to points (x,y)
+                        ha='center',  # horizontal alignment can be left, right or center
+                        fontsize=15,
+                        c=color)
+            
+            i = i + 1;
+
+    plt.legend()
+    plt.show()
 
 def plot_parity(x, y,labels=None, **kwargs):
     plot_params = {
@@ -102,13 +127,17 @@ def plot_parity(x, y,labels=None, **kwargs):
             i = i + 1;
     a = np.array([i[0] for i in x])
     b = np.array([i[0] for i in y])
-    
+
+    mod = sm.GLS(b, a)
+    res = mod.fit()
+    # print(res.summary())
+
     lm = LinearRegression(fit_intercept=True)
     lm.fit(a.reshape(-1, 1),b.reshape(-1, 1))
     message = '''
     Regression Results:
     Slope = {:.2f}
-    Intercept = {:.2f}
+    Intercept = {:.2f} 
     R^2 = {:.2f}
     '''.format(
         lm.coef_[0][0],
@@ -119,8 +148,8 @@ def plot_parity(x, y,labels=None, **kwargs):
     temp = np.array([-1,1])
     plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
 
-    plt.legend(fontsize=15)
     if plot_params.get('show_plot', True):
+        plt.legend(fontsize=15)
         plt.show()
     return plt
 

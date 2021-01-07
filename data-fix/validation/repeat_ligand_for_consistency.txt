@@ -1,0 +1,3 @@
+16.4785803	9	-0.107940968	0.066334704	0.008051022	
+absolute_yield	Austin-Num	nbmi	standard error	cv
+

@@ -1,5 +1,5 @@
 # utility libraries
-import json, os, pickle, bisect, random
+import json, os, pickle, bisect, random, types
 from copy import deepcopy as dc
 # plotting
 import matplotlib.pyplot as plt
@@ -18,7 +18,7 @@ from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.cluster import KMeans
 # helper functions defined elsewhere
-from helper_functions import plot_parity, countGrossErrors
+from helper_functions import plot_parity, countGrossErrors, validationPlot
 # wpca from https://github.com/jakevdp/wpca/
 from wpca import WPCA
 # model explaining
@@ -86,6 +86,47 @@ def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
         pickle.dump(feature_weights, open(feature_weights_path, "wb"))
         ligNames_path = os.path.join(out_dir, 'ligand_names.p')
         pickle.dump(ligNames, open(ligNames_path, "wb"))
+    
+    return X, y, feature_weights, sample_weights, ligNames
+
+def loadValidationData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
+    """
+    Retrieves data from Excel file and optionally writes it out to serialized format
+    """
+    configs = json.load(open(r'validation_data_config.json'))
+    xl_file = configs.get('xl_file')
+    target_column = configs.get('target_column')
+    descrptr_columns = configs.get('descrptr_columns')
+    err_column = configs.get('error_column')
+    name_col = configs.get('ligand_names')
+    absolute_yield = configs.get('absolute_yield')
+
+    df = pd.read_excel(xl_file)
+    absYields = df[absolute_yield].to_numpy()
+    
+    # remove any data which does not have our yield cutoff
+    if removeLessThan is not None:
+        # print("Input data set ({} total): ".format(len(df.index)),df[name_col])
+        remove_idxs = [i for i in range(0,len(absYields)) if absYields[i]<removeLessThan]
+        print("Removing the following ligands ({} total):".format(len(remove_idxs)), ', '.join(df[name_col].to_numpy()[remove_idxs]))
+        df.drop(remove_idxs,inplace=True)
+        print("{} ligands remaining.".format(len(df.index)))
+
+    ligNames = df[name_col].to_numpy()
+    y = df[target_column].to_numpy()
+    # replace any zeros to avoid inversion errors
+    y[y==0] = zeroReplace
+    descriptor_names = descrptr_columns
+    X = df[descrptr_columns].to_numpy()
+    # pull and process weight column into shape of input array
+    weights = df[err_column].to_numpy()  # read it
+    weights[weights == 0] = np.min(weights[weights > 0])  # replace 0 standard error with lowest other error
+    weights = 1./weights  # invert
+    weights = weights[np.newaxis]  # change from 1D to 2D
+    weights = weights.T  # transpose to column vector
+    sample_weights = weights
+    feature_weights = np.repeat(weights, len(df[descrptr_columns].columns), axis=1)  # copy columns across to match input data
+    del weights
     
     return X, y, feature_weights, sample_weights, ligNames
 
@@ -454,15 +495,84 @@ def doKMeansClustering(X,y,sample_weights,output=False,varianceNeeded=0.95):
         print(np.std(y[kmeans.labels_ == label]))
         print('Max in this Cluster: ',np.max(y[kmeans.labels_ == label]))
 
+def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+
+    # scale features for train and test
+    X_std_train = x_scaler.fit_transform(X_train)
+    X_std_test = x_scaler.transform(X_test)
+    # scale features for validation
+    X_std_valid = x_scaler.transform(vd.X)
+
+    # scale response for train and test
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
+    # scale response for validation
+    y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
+
+    # pull variable for de-sclaing response
+    y_sigma = y_scaler.scale_ 
+
+    """
+    Radial Basis Function Kernel Principal Component Regression
+    """
+    # instantiate, reduce dimensionality
+    kpca = KernelPCA(kernel="rbf",n_components=4)
+    X_std_train = kpca.fit_transform(X_std_train)
+    X_std_test = kpca.transform(X_std_test)
+    # apply same transformation to validation data
+    X_std_valid = kpca.transform(X_std_valid)
+
+    # do regression
+    lm = LinearRegression()
+    lm.fit(X_std_train, y_std_train)
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    # predict validation data, descale it
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
+    
+    print('Training/Testing Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+    print('R2 of training data: ', lm.score(X_std_train, y_std_train))
+    print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
+
+    print('Validation Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_valid_actual,y_pred=y_valid_pred))
+    print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred)/len(y_valid_pred))
+
+    validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
+    
+    return
+
+
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2)
+    ttd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
+
+    X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
+    vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
+    
+    doKPCATrainTestValid(ttd, vd, randSeed=837262349)
+
+
+
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
     # for i in range(0,10000):
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-    R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter='scaffold')  # , randSeed=837262349)
+    # R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter=None , randSeed=837262349)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
