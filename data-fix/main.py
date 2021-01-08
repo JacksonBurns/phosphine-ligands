@@ -24,7 +24,7 @@ from wpca import WPCA
 # model explaining
 import shap
 # scaffold splitter from chainer_chemistry
-from scaffold_split import get_scaffold_idxs
+from scaffold_split import get_scaffold_idxs  # NOQA
 
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
     """
@@ -321,6 +321,7 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
         X_train = np.array([X[i] for i in train_idxs])
         X_test = np.array([X[i] for i in test_idxs])
         y_train = np.array([y[i] for i in train_idxs])
+        
         y_test = np.array([y[i] for i in test_idxs])
         # f_weights_train
         # f_weights_test = [X[i] for i in test_idxs]
@@ -425,6 +426,60 @@ def doKMeansClusteringWithKPCA(X,y,sample_weights,vectrs=[0,1,2]):
         print(np.average(y[kmeans.labels_ == label]))
         print(np.std(y[kmeans.labels_ == label]))
         print('Max in this Cluster: ',np.max(y[kmeans.labels_ == label]))
+
+    plt.show()
+
+def doNonParametricValidation(ttd,vd,vectrs=[0,1,2]):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+    # scale features
+    X_scaled = x_scaler.fit_transform(ttd.X)
+    X_scaled_valid = x_scaler.transform(vd.X)
+    """
+    Radial Basis Function Kernel Principal Component Regression
+    """
+    kpca = KernelPCA(kernel="rbf",n_components=3)
+    X_pca = kpca.fit_transform(X_scaled)
+    X_pca_valid = kpca.transform(X_scaled_valid)
+    """
+    Cluster on the first 3 components 
+    """
+    kmeans = KMeans(n_clusters=2)
+    kmeans.fit(dc(X_pca), sample_weight=dc(ttd.s_weights).ravel())
+    
+    # plot actual values and clustering side by side
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 2, 1, projection='3d')
+    c = [((i+1)/2,0,(i+1)/2) for i in ttd.y] # conditional coloring
+    ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
+        c=c, alpha=0.75, s=50)
+    ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
+    ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)
+    ax.set_zlabel(f'PC {vectrs[2] + 1}', fontsize=20)
+    # clustering
+    ax = fig.add_subplot(1, 2, 2, projection='3d')
+    colors = ['red','green','blue','orange']
+    c = [colors[i] for i in kmeans.labels_] # conditional coloring
+    ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
+        c=c, alpha=0.75, s=50)
+    ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
+    ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)
+    ax.set_zlabel(f'PC {vectrs[2] + 1}', fontsize=20)
+
+    for label in range(0,2):
+        print('Cluster {} ({}) average and stdev:'.format(label,colors[label]))
+        print(np.average(ttd.y[kmeans.labels_ == label]))
+        print(np.std(ttd.y[kmeans.labels_ == label]))
+        print('Max in this Cluster: ',np.max(ttd.y[kmeans.labels_ == label]))
+
+    for i in range(0,len(vd.y)):
+        coords = X_pca_valid[i,:]
+        label = kmeans.predict(coords.reshape(1, -1))[0]
+        ax.scatter(coords[0], coords[1], coords[2], c=colors[label], alpha=0.75, edgecolors='black',marker="*", s=350)
+        ax.text(coords[0],coords[1],coords[2],str(vd.ln[i]),'x',
+                        ha='right',  # horizontal alignment can be left, right or center
+                        fontsize=15)
+        print(vd.ln[i]," belongs to ",colors[label])
 
     plt.show()
 
@@ -562,9 +617,8 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
     
-    doKPCATrainTestValid(ttd, vd, randSeed=837262349)
-
-
+    # doKPCATrainTestValid(ttd, vd, randSeed=837262349)
+    doNonParametricValidation(ttd,vd)
 
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
@@ -572,7 +626,7 @@ if __name__ == '__main__':
         # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-    # R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter=None , randSeed=837262349)
+    # R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter='scaffold' , randSeed=837262349)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))

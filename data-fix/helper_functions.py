@@ -13,7 +13,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-import statsmodels.api as sm
+import statsmodels.api as sm  # NOQA
 
 
 class IterateSubdirectories(object):
