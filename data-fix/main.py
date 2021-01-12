@@ -662,8 +662,8 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
     
     c = [(i,0,i) for i in (y_std_train-min(y_std_train))/(max(y_std_train)-min(y_std_train))] # conditional coloring
 
-    plt.scatter(X_std_train, y_std_train*y_sigma, \
-        c=c, alpha=0.75, s=s_weights_train*20)
+    plt.scatter(X_std_train[:, 0], y_std_train*y_sigma, \
+        c=c, alpha=0.75, s=50)#(s_weights_train**1.5))
     plt.xlabel('PC 1', fontsize=20)
     plt.ylabel(f'NBMI', fontsize=20)
     plt.title("Training Data", fontsize=20)
@@ -675,7 +675,16 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
     plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
     # print(s_weights_train**2)
     print(lm.score(X_std_train, y_std_train*y_sigma,sample_weight=s_weights_train**1.5))
+    plt.gca().invert_xaxis()
     plt.show()
+
+    print('x-data')
+    print(X_std_train.ravel())
+    print('y-data')
+    print((y_std_train*y_sigma).ravel())
+    print('weights')
+    print((s_weights_train**1.5).ravel())
+
 
     print('Training/Testing Data Statistics:')
     print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
