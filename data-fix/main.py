@@ -450,7 +450,9 @@ def doNonParametricValidation(ttd,vd,vectrs=[0,1,2]):
     # plot actual values and clustering side by side
     fig = plt.figure()
     ax = fig.add_subplot(1, 2, 1, projection='3d')
-    c = [((i+1)/2,0,(i+1)/2) for i in ttd.y] # conditional coloring
+    
+    c = [(i,0,i) for i in (ttd.y-min(ttd.y))/(max(ttd.y)-min(ttd.y))] # conditional coloring
+
     ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
         c=c, alpha=0.75, s=50)
     ax.set_xlabel(f'PC {vectrs[0] + 1}', fontsize=20)
@@ -466,7 +468,7 @@ def doNonParametricValidation(ttd,vd,vectrs=[0,1,2]):
     ax.set_ylabel(f'PC {vectrs[1] + 1}', fontsize=20)
     ax.set_zlabel(f'PC {vectrs[2] + 1}', fontsize=20)
 
-    for label in range(0,2):
+    for label in range(0,kmeans.n_clusters):
         print('Cluster {} ({}) average and stdev:'.format(label,colors[label]))
         print(np.average(ttd.y[kmeans.labels_ == label]))
         print(np.std(ttd.y[kmeans.labels_ == label]))
@@ -561,7 +563,6 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
     else:
         randState = random.randint(1,1e9)
     X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
-
     # scale features for train and test
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -581,7 +582,7 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
     Radial Basis Function Kernel Principal Component Regression
     """
     # instantiate, reduce dimensionality
-    kpca = KernelPCA(kernel="rbf",n_components=4)
+    kpca = KernelPCA(kernel="rbf",n_components=1)
     X_std_train = kpca.fit_transform(X_std_train)
     X_std_test = kpca.transform(X_std_test)
     # apply same transformation to validation data
@@ -609,6 +610,82 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
     
     return
 
+def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+
+    # scale features for train and test
+    X_std_train = x_scaler.fit_transform(X_train)
+    X_std_test = x_scaler.transform(X_test)
+    # scale features for validation
+    X_std_valid = x_scaler.transform(vd.X)
+
+    # scale response for train and test
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
+    # scale response for validation
+    y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
+
+    # pull variable for de-sclaing response
+    y_sigma = y_scaler.scale_ 
+
+    """
+    Radial Basis Function Kernel Principal Component Regression
+    """
+    # instantiate, reduce dimensionality
+    kpca = KernelPCA(kernel="rbf",n_components=1)
+    X_std_train = kpca.fit_transform(X_std_train)
+    X_std_test = kpca.transform(X_std_test)
+    # apply same transformation to validation data
+    X_std_valid = kpca.transform(X_std_valid)
+
+    # do regression
+    lm = LinearRegression()
+    lm.fit(X_std_train, y_std_train*y_sigma, sample_weight=s_weights_train.ravel()**1.5)
+    print(lm.coef_, " ", lm.intercept_)
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    # predict validation data, descale it
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
+    
+    # plot actual values and fitted line
+    plt.figure()
+    
+    c = [(i,0,i) for i in (y_std_train-min(y_std_train))/(max(y_std_train)-min(y_std_train))] # conditional coloring
+
+    plt.scatter(X_std_train, y_std_train*y_sigma, \
+        c=c, alpha=0.75, s=s_weights_train*20)
+    plt.xlabel('PC 1', fontsize=20)
+    plt.ylabel(f'NBMI', fontsize=20)
+    plt.title("Training Data", fontsize=20)
+    # preserve the auto-limits, as they are actually pretty good
+    plt.xlim(plt.get('xlim'))
+    plt.ylim(plt.get('ylim'))
+    # plot the line the model is using
+    temp = np.array([-1,1])
+    plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
+    # print(s_weights_train**2)
+    print(lm.score(X_std_train, y_std_train*y_sigma,sample_weight=s_weights_train**1.5))
+    plt.show()
+
+    print('Training/Testing Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+    print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
+
+    print('Validation Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_valid_actual,y_pred=y_valid_pred))
+    print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred)/len(y_valid_pred))
+
+    validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2)
@@ -617,8 +694,10 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
     
+    # doNonParametricValidation(ttd,vd)
     # doKPCATrainTestValid(ttd, vd, randSeed=837262349)
-    doNonParametricValidation(ttd,vd)
+
+    visualizeBest(ttd, vd, randSeed=837262349)
 
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];

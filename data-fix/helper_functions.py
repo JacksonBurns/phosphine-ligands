@@ -91,8 +91,12 @@ def plot_parity(x, y,labels=None, **kwargs):
     plt.scatter(x=x, y=y, alpha=plot_params['alpha'], s=plot_params['s'], c=plot_params['c'], label='Test Data')
     # max_entry = max(max(x), max(y)) + plot_params.get('offset', 5)
     # min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
+
+
     max_entry = 1
     min_entry = -1
+
+
     axes = plt.gca()
     axes.set_xlim([min_entry, max_entry])
     axes.set_ylim([min_entry, max_entry])
@@ -145,7 +149,7 @@ def plot_parity(x, y,labels=None, **kwargs):
         lm.score(a.reshape(-1, 1),b.reshape(-1, 1))
     )
     plt.annotate(message,(0.5,-0.5),ha='center',fontsize=15)
-    temp = np.array([-1,1])
+    temp = np.array([-100,100])
     plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
 
     if plot_params.get('show_plot', True):
