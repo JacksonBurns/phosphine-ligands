@@ -1,3 +1,16 @@
+1-D best result:
+[[2.5466166]]   [0.1902907]
+Training/Testing Data Statistics:
+Mean Absolute Error:  0.10130782344467064
+% Gross Errors:  0.06666666666666667
+Validation Data Statistics:
+Mean Absolute Error:  0.2674473126625747
+% Gross Errors:  0.0
+split: randSeed=837262349
+gamma: 0.05
+
+
+
 Best result:
 
 4-Component RBF KPCA, all below 2 removed

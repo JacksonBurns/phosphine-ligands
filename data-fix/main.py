@@ -1,5 +1,5 @@
 # utility libraries
-import json, os, pickle, bisect, random, types
+import json, os, pickle, bisect, random, types, math
 from copy import deepcopy as dc
 # plotting
 import matplotlib.pyplot as plt
@@ -25,6 +25,8 @@ from wpca import WPCA
 import shap
 # scaffold splitter from chainer_chemistry
 from scaffold_split import get_scaffold_idxs  # NOQA
+# math
+from scipy.stats import rankdata
 
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
     """
@@ -610,7 +612,7 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
     
     return
 
-def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
+def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
@@ -641,15 +643,18 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
     Radial Basis Function Kernel Principal Component Regression
     """
     # instantiate, reduce dimensionality
-    kpca = KernelPCA(kernel="rbf",n_components=1)
+    kpca = KernelPCA(kernel="rbf",n_components=1,gamma=0.05,random_state=randSeed)
     X_std_train = kpca.fit_transform(X_std_train)
     X_std_test = kpca.transform(X_std_test)
     # apply same transformation to validation data
     X_std_valid = kpca.transform(X_std_valid)
-
+    # print(kpca.get_params())
+    # print('default gamma: ',1/len(X_std_train[0,:]))
     # do regression
+    
     lm = LinearRegression()
-    lm.fit(X_std_train, y_std_train*y_sigma, sample_weight=s_weights_train.ravel()**1.5)
+    lm.fit(X_std_train, y_std_train*y_sigma + y_scaler.mean_, sample_weight=s_weights_train.ravel()**1.5)
+    print(lm.score(X_std_train, y_std_train*y_sigma + y_scaler.mean_,sample_weight=s_weights_train**1.5))
     print(lm.coef_, " ", lm.intercept_)
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
@@ -657,13 +662,40 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
     y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
     y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
     
+    '''
+    # **1.5 weights
+    # expfit = lambda x: -437.3*np.exp(0.2699*x)+437.6*np.exp(0.2661*x)
+    # expfit = lambda x: -0.6984*(x-1.003)**3-0.7672
+    # expfit = lambda x: -4.081*x**3+0.143
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in expfit(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in expfit(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
+    '''
     # plot actual values and fitted line
     plt.figure()
-    
+    plt.subplot(1,2,2)
     c = [(i,0,i) for i in (y_std_train-min(y_std_train))/(max(y_std_train)-min(y_std_train))] # conditional coloring
 
-    plt.scatter(X_std_train[:, 0], y_std_train*y_sigma, \
-        c=c, alpha=0.75, s=50)#(s_weights_train**1.5))
+    plt.scatter(X_std_train[:, 0], y_std_train*y_sigma + y_scaler.mean_, \
+        c=c, alpha=0.75, s=rankdata(s_weights_train)**1.5)#=s_weights_train**1.5)
+    plt.xlabel('PC 1', fontsize=20)
+    plt.ylabel(f'NBMI', fontsize=20)
+    plt.title("Training Data (Weighted)", fontsize=20)
+    # preserve the auto-limits, as they are actually pretty good
+    plt.xlim(plt.get('xlim'))
+    plt.ylim(plt.get('ylim'))
+    # plot the line the model is using
+    temp = np.linspace(-1,1,100)
+    plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
+    # plt.plot(temp, expfit(temp),linestyle='--',label='RBF-KPCA',c='blue')
+    # print(s_weights_train**2)
+    
+    # plt.gca().invert_xaxis()
+
+    plt.subplot(1,2,1)
+    plt.scatter(X_std_train[:, 0], y_std_train*y_sigma + y_scaler.mean_, \
+        c=c, alpha=0.75, s=50)
     plt.xlabel('PC 1', fontsize=20)
     plt.ylabel(f'NBMI', fontsize=20)
     plt.title("Training Data", fontsize=20)
@@ -671,19 +703,21 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8):
     plt.xlim(plt.get('xlim'))
     plt.ylim(plt.get('ylim'))
     # plot the line the model is using
-    temp = np.array([-1,1])
+    temp = np.linspace(-1,1,100)
     plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
-    # print(s_weights_train**2)
-    print(lm.score(X_std_train, y_std_train*y_sigma,sample_weight=s_weights_train**1.5))
-    plt.gca().invert_xaxis()
+    # plt.plot(temp, expfit(temp),linestyle='--',label='RBF-KPCA',c='blue')
+    for ix,iy,i in zip(X_std_train[:, 0],y_std_train*y_sigma + y_scaler.mean_,range(len(X_std_train[:, 0]))):
+        plt.annotate(str(ln_train[i]), (ix,iy), textcoords="offset points",xytext=(0,-15), # distance from text to points (x,y)
+                            ha='center',  # horizontal alignment can be left, right or center
+                            fontsize=10)
     plt.show()
 
-    print('x-data')
-    print(X_std_train.ravel())
-    print('y-data')
-    print((y_std_train*y_sigma).ravel())
-    print('weights')
-    print((s_weights_train**1.5).ravel())
+    # print('x-data')
+    # print(X_std_train.ravel())
+    # print('y-data')
+    # print((y_std_train*y_sigma + y_scaler.mean_).ravel())
+    # print('weights')
+    # print((s_weights_train**1.5).ravel())
 
 
     print('Training/Testing Data Statistics:')
@@ -706,8 +740,15 @@ if __name__ == '__main__':
     # doNonParametricValidation(ttd,vd)
     # doKPCATrainTestValid(ttd, vd, randSeed=837262349)
 
-    visualizeBest(ttd, vd, randSeed=837262349)
+    visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=0.02)
 
+    # fitR2s = []
+    # for gamma in np.linspace(0.01,0.5,100):
+    #     fitR2s.append(visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=gamma))
+    # plt.plot(np.linspace(0.01,0.5,100),fitR2s)
+    # plt.xlabel('gamma')
+    # plt.ylabel('Fit R2')
+    # plt.show()
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
     # for i in range(0,10000):
