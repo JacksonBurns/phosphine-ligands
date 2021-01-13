@@ -995,14 +995,14 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
     
-    # doNonParametricValidation(ttd,vd)
-    # doKPCATrainTestValid(ttd, vd, randSeed=837262349)
+    doNonParametricValidation(dc(ttd),dc(vd))
+    # doKPCATrainTestValid(dc(ttd), dc(vd), randSeed=837262349)
 
-    doRFR(ttd,vd,randSeed=837262349)
+    #doRFR(dc(ttd),dc(vd),randSeed=837262349)
 
-    # visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=None, trainSize=0.8)
-    # visualizeBest2D(dc(ttd), dc(vd), randSeed=837262349, gamma=0.02)
-    # RBFKPCALogFit(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
+    visualizeBest(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.8)
+    visualizeBest2D(dc(ttd), dc(vd), randSeed=None, gamma=None)
+    RBFKPCALogFit(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
     input()
 
     # fitR2s = []

@@ -84,6 +84,7 @@ def plot_parity(x, y,labels=None, **kwargs):
         'alpha': 0.7,
         's': 10,
         'c': 'green',
+        'offset': 1
     }
     
     if kwargs is not None:
@@ -94,9 +95,10 @@ def plot_parity(x, y,labels=None, **kwargs):
     # min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
 
 
-    max_entry = 1
-    min_entry = -1
-
+    # max_entry = 1
+    # min_entry = -1
+    max_entry = max(max(x), max(y)) + plot_params.get('offset', 5)
+    min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
 
     axes = plt.gca()
     axes.set_xlim([min_entry, max_entry])
