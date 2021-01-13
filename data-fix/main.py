@@ -28,6 +28,10 @@ from scaffold_split import get_scaffold_idxs  # NOQA
 # math
 from scipy.stats import rankdata
 
+from sklearn.model_selection import cross_val_score, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import MinMaxScaler
+
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None, removeGreaterThan=None):
     """
     Retrieves data from Excel file and optionally writes it out to serialized format
@@ -451,7 +455,7 @@ def doNonParametricValidation(ttd,vd,vectrs=[0,1,2]):
     """
     Cluster on the first 3 components 
     """
-    kmeans = KMeans(n_clusters=2)
+    kmeans = KMeans(n_clusters=4)
     kmeans.fit(dc(X_pca), sample_weight=dc(ttd.s_weights).ravel())
     
     # plot actual values and clustering side by side
@@ -953,6 +957,37 @@ def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     plt.figure()
     validationPlot(x=y_test, y=y_predict,x_valid=vd.y,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
+def doRFR(ttd, vd, trainSize=0.8, randSeed=None):
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+
+    # Perform Grid-Search
+    gsc = GridSearchCV(
+        estimator=RandomForestRegressor(),
+        param_grid={
+            'max_depth': range(1,10,1),
+            'n_estimators': range(1,50,1)
+        },
+        cv=5, scoring='neg_mean_absolute_error',# default RFR scoring
+        verbose=1,n_jobs=-1,  # refit=True
+        )
+    # print(gsc.best_estimator_)
+    # grid_result = gsc.fit(ttd.X, ttd.y, ttd.s_weights.ravel())
+    grid_result = gsc.fit(X_train, y_train, s_weights_train.ravel())
+    best_params = grid_result.best_params_
+    print("best params: ",best_params, "MAE: ",-1*grid_result.best_score_)
+    
+    rfr = RandomForestRegressor(max_depth=best_params["max_depth"], n_estimators=best_params["n_estimators"],random_state=False, verbose=False)
+    rfr.fit(X_train, y_train, s_weights_train.ravel())
+    print("RFR R2: ",rfr.score(X_train, y_train, s_weights_train))
+    y_predict = rfr.predict(X_test)
+    y_valid_pred = rfr.predict(vd.X)
+    validationPlot(x=y_test, y=y_predict,x_valid=vd.y,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
+
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2,removeGreaterThan=None)
     ttd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
@@ -963,7 +998,9 @@ if __name__ == '__main__':
     # doNonParametricValidation(ttd,vd)
     # doKPCATrainTestValid(ttd, vd, randSeed=837262349)
 
-    visualizeBest(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
+    doRFR(ttd,vd,randSeed=837262349)
+
+    # visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=None, trainSize=0.8)
     # visualizeBest2D(dc(ttd), dc(vd), randSeed=837262349, gamma=0.02)
     # RBFKPCALogFit(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
     input()
