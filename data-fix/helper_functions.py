@@ -5,6 +5,7 @@ Description: toolbox of helper functions
 
 
 from typing import List
+from collections.abc import Iterable
 
 import os
 import glob
@@ -76,7 +77,7 @@ def validationPlot(x, y, x_valid, y_valid, labels=None, valid_labels=None, **kwa
             i = i + 1;
 
     plt.legend()
-    plt.show()
+    plt.show(block=False)
 
 def plot_parity(x, y,labels=None, **kwargs):
     plot_params = {
@@ -129,13 +130,16 @@ def plot_parity(x, y,labels=None, **kwargs):
                         c=color)
             
             i = i + 1;
-    a = np.array([i[0] for i in x])
-    b = np.array([i[0] for i in y])
+    if(isinstance(x, list)):
+        a = np.array([i[0] for i in x])
+        b = np.array([i[0] for i in y])
+    else:
+        a = x
+        b = y
 
-    mod = sm.GLS(b, a)
-    res = mod.fit()
-    # print(res.summary())
-
+    # mod = sm.GLS(b, a)
+    # res = mod.fit()
+    # # print(res.summary())
     lm = LinearRegression(fit_intercept=True)
     lm.fit(a.reshape(-1, 1),b.reshape(-1, 1))
     message = '''
@@ -154,12 +158,15 @@ def plot_parity(x, y,labels=None, **kwargs):
 
     if plot_params.get('show_plot', True):
         plt.legend(fontsize=15)
-        plt.show()
+        plt.show(block=False)
     return plt
 
-def countGrossErrors(test,predict):
-    GE = 0
-    for (t,p) in zip(test,predict):
-        if (t>0 and p<0) or (p>0 and t<0):
-            GE = GE + 1
-    return GE
+def countGrossErrors(t,p):
+    if(not isinstance(t, (list,np.ndarray))):
+        return 1 if (t>0 and p<0) or (p>0 and t<0) else 0
+    else:
+        GE = 0
+        for i in range(len(t)):
+            if((t[i]>0 and p[i]<0) or (p[i]>0 and t[i]<0)):
+                GE = GE + 1
+        return GE

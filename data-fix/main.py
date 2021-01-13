@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error as MAE
 from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV
+from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV, RANSACRegressor, HuberRegressor
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.cluster import KMeans
 # helper functions defined elsewhere
@@ -28,7 +28,7 @@ from scaffold_split import get_scaffold_idxs  # NOQA
 # math
 from scipy.stats import rankdata
 
-def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
+def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None, removeGreaterThan=None):
     """
     Retrieves data from Excel file and optionally writes it out to serialized format
     """
@@ -43,11 +43,16 @@ def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
 
         df = pd.read_excel(xl_file)
         absYields = df[absolute_yield].to_numpy()
-        
+        err_col = df[err_column].to_numpy()
         # remove any data which does not have our yield cutoff
-        if removeLessThan is not None:
+        if removeLessThan is not None and removeGreaterThan is None:
             # print("Input data set ({} total): ".format(len(df.index)),df[name_col])
             remove_idxs = [i for i in range(0,len(absYields)) if absYields[i]<removeLessThan]
+            print("Removing the following ligands ({} total):".format(len(remove_idxs)), ', '.join(df[name_col].to_numpy()[remove_idxs]))
+            df.drop(remove_idxs,inplace=True)
+            print("{} ligands remaining.".format(len(df.index)))
+        elif removeGreaterThan is not None:
+            remove_idxs = [i for i in range(0,len(err_col)) if err_col[i]>removeGreaterThan]
             print("Removing the following ligands ({} total):".format(len(remove_idxs)), ', '.join(df[name_col].to_numpy()[remove_idxs]))
             df.drop(remove_idxs,inplace=True)
             print("{} ligands remaining.".format(len(df.index)))
@@ -710,6 +715,115 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
         plt.annotate(str(ln_train[i]), (ix,iy), textcoords="offset points",xytext=(0,-15), # distance from text to points (x,y)
                             ha='center',  # horizontal alignment can be left, right or center
                             fontsize=10)
+    plt.show(block=False)
+
+    # print('x-data')
+    # print(X_std_train.ravel(),X_std_test.ravel())
+    # print('y-data')
+    # print((y_std_train*y_sigma + y_scaler.mean_).ravel(),(y_std_test*y_sigma + y_scaler.mean_).ravel())
+    # print('weights')
+    # print((s_weights_train**1.5).ravel(),(s_weights_test**1.5).ravel())
+
+
+    print('Training/Testing Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+    print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
+
+    print('Validation Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_valid_actual,y_pred=y_valid_pred))
+    print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred)/len(y_valid_pred))
+
+    plt.figure()
+    validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
+
+def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+
+    # scale features for train and test
+    X_std_train = x_scaler.fit_transform(X_train)
+    X_std_test = x_scaler.transform(X_test)
+    # scale features for validation
+    X_std_valid = x_scaler.transform(vd.X)
+
+    # scale response for train and test
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
+    # scale response for validation
+    y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
+
+    # pull variable for de-sclaing response
+    y_sigma = y_scaler.scale_ 
+
+    """
+    Radial Basis Function Kernel Principal Component Regression
+    """
+    # instantiate, reduce dimensionality
+    kpca = KernelPCA(kernel="rbf",n_components=2,gamma=0.05,random_state=randSeed)
+    X_std_train = kpca.fit_transform(X_std_train)
+    X_std_test = kpca.transform(X_std_test)
+    # apply same transformation to validation data
+    X_std_valid = kpca.transform(X_std_valid)
+    # print(kpca.get_params())
+    # print('default gamma: ',1/len(X_std_train[0,:]))
+    # do regression
+    
+    lm = LinearRegression()
+    lm.fit(X_std_train, y_std_train*y_sigma + y_scaler.mean_, sample_weight=s_weights_train.ravel()**1.5)
+    print(lm.score(X_std_train, y_std_train*y_sigma + y_scaler.mean_,sample_weight=s_weights_train**1.5))
+    print(lm.coef_, " ", lm.intercept_)
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    # predict validation data, descale it
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
+    
+    # plot actual values and fitted line
+    plt.figure()
+    ax = plt.subplot(1,2,2,projection='3d')
+    c = [(i,0,i) for i in (y_std_train-min(y_std_train))/(max(y_std_train)-min(y_std_train))] # conditional coloring
+
+    ax.scatter(X_std_train[:, 0], X_std_train[:, 1], y_std_train*y_sigma + y_scaler.mean_, \
+        c=c, alpha=0.75)#, s=50)#rankdata(s_weights_train)**1.5)
+    ax.set_xlabel('PC 1', fontsize=20)
+    ax.set_ylabel('PC 2', fontsize=20)
+    ax.set_zlabel('NBMI', fontsize=20)
+    ax.set_title("Training Data (Weighted)", fontsize=20)
+    # preserve the auto-limits, as they are actually pretty good
+    ax.set_xlim(ax.get_xlim())
+    ax.set_ylim(ax.get_ylim())
+    ax.set_zlim(ax.get_zlim())
+    # plot the line the model is using
+    temp = np.linspace(-0.4,0.6,100)
+    ax.plot(temp, temp, lm.coef_[0][0]*temp + lm.coef_[0][1]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
+
+    ax = plt.subplot(1,2,1,projection='3d')
+    ax.scatter(X_std_train[:, 0], X_std_train[:, 1], y_std_train*y_sigma + y_scaler.mean_, \
+        c=c, alpha=0.75)#, s=50)
+    ax.set_xlabel('PC 1', fontsize=20)
+    ax.set_ylabel('PC 2', fontsize=20)
+    ax.set_zlabel('NBMI', fontsize=20)
+    ax.set_title("Training Data", fontsize=20)
+    # preserve the auto-limits, as they are actually pretty good
+    ax.set_xlim(ax.get_xlim())
+    ax.set_ylim(ax.get_ylim())
+    ax.set_zlim(ax.get_zlim())
+    # plot the line the model is using
+    temp = np.linspace(-0.5,0.5,100)
+    ax.plot(temp, temp, lm.coef_[0][0]*temp + lm.coef_[0][1]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
+    
+    # for ix,iy,i in zip(X_std_train[:, 0],y_std_train*y_sigma + y_scaler.mean_,range(len(X_std_train[:, 0]))):
+    #     plt.annotate(str(ln_train[i]), (ix,iy), textcoords="offset points",xytext=(0,-15), # distance from text to points (x,y)
+    #                         ha='center',  # horizontal alignment can be left, right or center
+    #                         fontsize=10)
     plt.show()
 
     # print('x-data')
@@ -730,8 +844,117 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
 
     validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
+def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+
+    # scale features for train and test
+    X_std_train = x_scaler.fit_transform(X_train)
+    X_std_test = x_scaler.transform(X_test)
+    # scale features for validation
+    X_std_valid = x_scaler.transform(vd.X)
+
+    """
+    Radial Basis Function Kernel Principal Component Regression
+    """
+    # instantiate, reduce dimensionality
+    kpca = KernelPCA(kernel="rbf",n_components=1,gamma=gamma,random_state=randSeed)
+    X_std_train = kpca.fit_transform(X_std_train)
+    X_std_test = kpca.transform(X_std_test)
+    # apply same transformation to validation data
+    X_std_valid = kpca.transform(X_std_valid)
+    '''
+    When plotted as NBMI vs. PC1, there is a somewhat obvious logarithmic distribution to the data.
+    To fit a curve to this, first translate the data into the domain of the natural log and then 
+    take the ln of all NBMI.
+    '''
+    tlt = 1.01
+    y_train_logd = np.log(y_train+tlt)
+    y_test_logd = np.log(y_test+tlt)
+    y_valid_logd = np.log(vd.y+tlt)
+    
+    # do OLS regression
+    lm = LinearRegression()
+    lm.fit(X_std_train, y_train_logd, sample_weight=s_weights_train.ravel())
+    print("Linear model R2: ",lm.score(X_std_train, y_train_logd, sample_weight=s_weights_train))
+    # predict test data
+    y_predict_logd = lm.predict(X_std_test)
+    # predict validation data
+    y_valid_pred_logd = lm.predict(X_std_valid)
+
+    # do RANSAC regression
+    ransac = RANSACRegressor()
+    ransac.fit(X_std_train, y_train_logd)
+    print("RANSAC R2: ",ransac.score(X_std_train, y_train_logd))
+    # predict test data
+    rs_y_predict_logd = ransac.predict(X_std_test)
+    # predict validation data
+    rs_y_valid_pred_logd = ransac.predict(X_std_valid)
+
+    # do Huber regression
+    huber = HuberRegressor()
+    huber.fit(X_std_train, y_train_logd, sample_weight=s_weights_train.ravel())
+    print("Huber R2: ",huber.score(X_std_train, y_train_logd, sample_weight=s_weights_train))
+    # predict test data
+    hb_y_predict_logd = huber.predict(X_std_test)
+    # predict validation data
+    hb_y_valid_pred_logd = huber.predict(X_std_valid)
+
+
+    plt.figure()
+    # plot actual values and fitted line
+    plt.subplot(1,2,2)
+    c = [(i,0,i) for i in (y_train-min(y_train))/(max(y_train)-min(y_train))] # conditional coloring
+    plt.scatter(X_std_train[:, 0], y_train_logd, \
+        c=c, alpha=0.75, s=rankdata(s_weights_train))
+    plt.xlabel('PC 1', fontsize=20)
+    plt.ylabel(f'ln(NBMI+{tlt})', fontsize=20)
+    plt.title("Transformed Training Data (Weighted)", fontsize=20)
+    # preserve the auto-limits, as they are actually pretty good
+    plt.xlim(plt.get('xlim'))
+    plt.ylim(plt.get('ylim'))
+    # plot the line the model is using
+    temp = np.linspace(-1,1,100)
+    plt.plot(temp, lm.coef_[0]*temp + lm.intercept_,linestyle='--',label='OLS',c='blue')
+    plt.plot(temp,ransac.predict(temp.reshape(-1, 1)),linestyle='--',label='RANSAC',c='red')
+    plt.plot(temp,huber.predict(temp.reshape(-1, 1)),linestyle='--',label='Huber',c='green')
+    plt.legend()
+    # plot original data and show validation
+    plt.subplot(1,2,1)
+    plt.scatter(X_std_train[:, 0], y_train, \
+        c=c, alpha=0.75, s=rankdata(s_weights_train))
+    plt.xlabel('PC 1', fontsize=20)
+    plt.ylabel(f'NBMI', fontsize=20)
+    plt.title("Training Data (Weighted)", fontsize=20)
+    # preserve the auto-limits, as they are actually pretty good
+    plt.xlim(plt.get('xlim'))
+    plt.ylim(plt.get('ylim'))
+    plt.show(block=False)
+
+    # untransform the model predictions
+    y_predict = np.exp(y_predict_logd)-tlt
+    y_valid_pred = np.exp(y_valid_pred_logd)-tlt
+
+    print('Training/Testing Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+    print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
+
+    print('Validation Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=vd.y,y_pred=y_valid_pred))
+    print('% Gross Errors: ', countGrossErrors(vd.y,y_valid_pred)/len(y_valid_pred))
+
+    plt.figure()
+    validationPlot(x=y_test, y=y_predict,x_valid=vd.y,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
+
 if __name__ == '__main__':
-    X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2)
+    X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=2,removeGreaterThan=None)
     ttd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
 
     X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
@@ -740,7 +963,10 @@ if __name__ == '__main__':
     # doNonParametricValidation(ttd,vd)
     # doKPCATrainTestValid(ttd, vd, randSeed=837262349)
 
-    visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=0.02)
+    visualizeBest(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
+    # visualizeBest2D(dc(ttd), dc(vd), randSeed=837262349, gamma=0.02)
+    # RBFKPCALogFit(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
+    input()
 
     # fitR2s = []
     # for gamma in np.linspace(0.01,0.5,100):
