@@ -27,16 +27,12 @@ from sklearn.preprocessing import MinMaxScaler
 # wpca from https://github.com/jakevdp/wpca/
 from wpca import WPCA
 # helper functions defined elsewhere
-from helper_functions import plot_parity, countGrossErrors, validationPlot, smallvalidationPlot  # NOQA
+from helper_functions import plot_parity, countGrossErrors, validationPlot, smallvalidationPlot
 # model explaining
 import shap
 # data sampling
 from dcekit.sampling import kennard_stone  # NOQA
 from scaffold_split import get_scaffold_idxs  # NOQA
-# classification algorithms
-from sklearn.pipeline import make_pipeline
-from sklearn.svm import SVC
-from sklearn.preprocessing import LabelEncoder
 
 def loadData(config,zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None, removeGreaterThan=None):
     """
@@ -143,61 +139,104 @@ def splitData(ttd, randState=None, splitter=None, trainSize=0.80):
         s_weights_test = [ttd.s_weights[i] for i in test_idxs]
         ln_train = np.array([ttd.ln[i] for i in train_idxs])
         ln = np.array([ttd.ln[i] for i in test_idxs])
+    print(y_train)
     return X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test, ln_train, ln
 
-def doModel(model,ttd,vd,center=0,splitter=None,randState=None, output=False, trainSize=0.8):
-    if(output): print('~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~')
+def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize=0.8):
     # split the data into training and test
     X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test, ln_train, ln = splitData(ttd, randState=randState, splitter=splitter, trainSize=trainSize)
 
-    # instantiate scaler
+    # instantiate scalers
     x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
     # scale features for train and test
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
     # scale features for validation
     X_std_valid = x_scaler.transform(vd.X)
-    
-    # encode categorical response
-    enc = LabelEncoder()
-    y_train = enc.fit_transform(y_train)
-    y_test = enc.transform(y_test)
-    y_valid = enc.transform(vd.y)
+    # scale response for train and test
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
+    # scale response for validation
+    y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
+    # pull variable for de-sclaing response
+    y_sigma = y_scaler.scale_
+
 
     # fit the appropriate regressor
-    if model == 'SVC':
+    # TODO: wrap these in an optional GridSearchCV
+    if model == 'BayesianRidge':
+        regressor = BayesianRidge()
+    elif model == 'SVR':
         gsc = GridSearchCV(
-            estimator=SVC(),
+            estimator=SVR(),
             param_grid={
-                'C': [0.25,0.5,1,2],
-                'gamma': [0.1,0.2,0.5,1,2],
-                'kernel': ['rbf']
-            }, cv=2, # scoring='neg_mean_absolute_error',
-            verbose=1,n_jobs=-2,
+                'C': [0.25,0.5,1,2,3,5,10],
+                'epsilon': [0.05,0.1,0.2,0.5,0.75,1],
+                'gamma': [0.025,0.05,0.1,0.2,0.5,1,2]
+            }, cv=5, # scoring='neg_mean_absolute_error',
+            verbose=1,n_jobs=-1,
         )
-        grid_result = gsc.fit(X_train, y_train)#, [i[0] for i in s_weights_train])
+        grid_result = gsc.fit(X_train, y_train)
         best_params = grid_result.best_params_
-        if(output):
-            print('Best parameters for SVC are {} kernel, C={}, gamma={}.'.format(
-                    best_params["kernel"],best_params["C"],best_params["gamma"]
-                    )
-                )
-        regressor = SVC(
-            kernel=best_params["kernel"],
-            C=best_params["C"],
-            gamma=best_params["gamma"]
+        regressor = SVR(kernel='rbf',C=best_params["C"],epsilon=best_params["epsilon"],gamma=best_params["gamma"])
+    elif model == 'KNN':
+        raise(Exception('KNN incompatible with weights'))
+    elif model == 'RFR':
+        gsc = GridSearchCV(
+            estimator=RandomForestRegressor(),
+            param_grid={
+                'max_depth': range(1,10,1),
+                'n_estimators': range(1,20,1)
+            },
+            cv=5, # scoring='neg_mean_absolute_error',
+            verbose=1,n_jobs=-1,
         )
+        grid_result = gsc.fit(X_train, y_train)
+        best_params = grid_result.best_params_
+        regressor = RandomForestRegressor(max_depth=best_params["max_depth"], n_estimators=best_params["n_estimators"],random_state=False, verbose=False)
+    elif model == 'kpca':
+        # instantiate, reduce dimensionality
+        kpca = KernelPCA(kernel="rbf",n_components=1,gamma=0.02)
+        X_std_train = kpca.fit_transform(X_std_train)
+        X_std_test = kpca.transform(X_std_test)
+        # apply same transformation to validation data
+        X_std_valid = kpca.transform(X_std_valid)
+        # do regression
+        regressor = LinearRegression()
+    elif model == 'LASSO':
+        raise(Exception('KNN incompatible with weights'))
+    elif model == 'RidgeCV':
+        regressor = RidgeCV()
+    elif model == 'WPCA':
+        raise(NotImplementedError)
     else:
         raise(NotImplementedError)
 
-    regressor.fit(X_std_train, y_train)#, sample_weight=s_weights_train)
+    # TODO: add back option for weights
+    regressor.fit(X_std_train, y_std_train, s_weights_train.ravel())
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in regressor.predict(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    # predict validation data, descale it
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in regressor.predict(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
 
     if(output):
+        print('~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~')
         print(f'Results for {model} with {splitter}')
-        print('Accuracy on testing data: {:.2f}%'.format(100*regressor.score(X_std_test, y_test)))#, s_weights_test)))
-        print('Accuracy on validation data: {:.2f}%'.format(100*regressor.score(X_std_valid, y_valid)))#, vd.s_weights)))
+        print('Training/Testing Data Statistics:')
+        print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+        print('R2 of training data: ', regressor.score(X_std_train, y_std_train, s_weights_train))
+        print('% Gross Errors: ', countGrossErrors(y_test,y_predict,c=center)/len(y_predict))
+
+        print('Validation Data Statistics:')
+        print('Mean Absolute Error: ', MAE(y_true=y_valid_actual,y_pred=y_valid_pred))
+        print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred,c=center)/len(y_valid_pred))
+
+    smallvalidationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
     return
+
 
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(r'data_config.json',zeroReplace=0.01,removeLessThan=2,removeGreaterThan=None)
@@ -206,15 +245,14 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(r'validation_data_config.json',zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
 
-    doModel('SVC',dc(ttd),dc(vd),splitter=None,output=True,trainSize=0.80)
-    # plt.figure()
-    # plt.suptitle('Model and Sampling Screen for BIR-adj (abs. yield >2%, tts=0.80, zeros=0.01)',fontsize=12)
-    # models = ['BayesianRidge','SVR','KNN','RFR','kpca','LASSO','RidgeCV']
-    # splitters = ['scaffold','kennard_stone']
-    # for model in models:
-    #     for splitter in splitters:
-    #         plt.subplot(2, 7, models.index(model)+1+7*splitters.index(splitter))
-    #         doModel(model,center=0,splitter=splitter,output=False,trainSize=0.80)
-    #         plt.title(f'{model} with {splitter}',fontsize=8)
+    plt.figure()
+    plt.suptitle('Model and Sampling Screen for BIR-adj (abs. yield >2%, tts=0.80, zeros=0.01)',fontsize=12)
+    models = ['BayesianRidge','SVR','RFR','kpca','RidgeCV']
+    splitters = ['scaffold','kennard_stone']
+    for model in models:
+        for splitter in splitters:
+            plt.subplot(len(splitters), len(models), models.index(model)+1+len(models)*splitters.index(splitter))
+            doModel(model,center=0,splitter=splitter,output=True,trainSize=0.80)
+            plt.title(f'{model} with {splitter}',fontsize=8)
 
     plt.show()
