@@ -79,6 +79,12 @@ def validationPlot(x, y, x_valid, y_valid, labels=None, valid_labels=None, **kwa
     plt.legend()
     plt.show(block=False)
 
+def smallvalidationPlot(x, y, x_valid, y_valid, labels=None, valid_labels=None, **kwargs):
+
+    plt = plot_parity(x=x, y=y, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30,show_plot=False, xlabel_fontsize=8,title_fontsize=8,ylabel_fontsize=8,xticksize=8,yticksize=8,offset=0)
+
+    plt.scatter(x=x_valid, y=y_valid, alpha=1, s=40, c='orange', edgecolors='black', label='Internal Validation')
+
 def plot_parity(x, y,labels=None, **kwargs):
     plot_params = {
         'alpha': 0.7,
@@ -95,10 +101,10 @@ def plot_parity(x, y,labels=None, **kwargs):
     # min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
 
 
-    # max_entry = 1
-    # min_entry = -1
-    max_entry = max(max(x), max(y)) + plot_params.get('offset', 5)
-    min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
+    max_entry = 1
+    min_entry = -1
+    # max_entry = max(max(x), max(y)) + plot_params.get('offset', 5)
+    # min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
 
     axes = plt.gca()
     axes.set_xlim([min_entry, max_entry])
@@ -154,7 +160,8 @@ def plot_parity(x, y,labels=None, **kwargs):
         lm.intercept_[0],
         lm.score(a.reshape(-1, 1),b.reshape(-1, 1))
     )
-    plt.annotate(message,(0.5,-0.5),ha='center',fontsize=15)
+    if labels is not None:
+        plt.annotate(message,(0.5,-0.5),ha='center',fontsize=15)
     temp = np.array([-100,100])
     plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
 
@@ -163,12 +170,12 @@ def plot_parity(x, y,labels=None, **kwargs):
         plt.show(block=False)
     return plt
 
-def countGrossErrors(t,p):
+def countGrossErrors(t,p,c=0):
     if(not isinstance(t, (list,np.ndarray))):
-        return 1 if (t>0 and p<0) or (p>0 and t<0) else 0
+        return 1 if (t>c and p<c) or (p>c and t<c) else 0
     else:
         GE = 0
         for i in range(len(t)):
-            if((t[i]>0 and p[i]<0) or (p[i]>0 and t[i]<0)):
+            if((t[i]>c and p[i]<c) or (p[i]>c and t[i]<c)):
                 GE = GE + 1
         return GE
