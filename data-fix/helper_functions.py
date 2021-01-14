@@ -81,11 +81,11 @@ def validationPlot(x, y, x_valid, y_valid, labels=None, valid_labels=None, **kwa
 
 def smallvalidationPlot(x, y, x_valid, y_valid, labels=None, valid_labels=None, **kwargs):
 
-    plt = plot_parity(x=x, y=y, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30,show_plot=False, xlabel_fontsize=8,title_fontsize=8,ylabel_fontsize=8,xticksize=8,yticksize=8,offset=0)
+    plt = plot_parity(x=x, y=y, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30,show_plot=False, xlabel_fontsize=8,title_fontsize=8,ylabel_fontsize=8,xticksize=8,yticksize=8,offset=0,c=1)
 
     plt.scatter(x=x_valid, y=y_valid, alpha=1, s=40, c='orange', edgecolors='black', label='Internal Validation')
 
-def plot_parity(x, y,labels=None, **kwargs):
+def plot_parity(x, y,c=0,labels=None, **kwargs):
     plot_params = {
         'alpha': 0.7,
         's': 10,
@@ -100,9 +100,14 @@ def plot_parity(x, y,labels=None, **kwargs):
     # max_entry = max(max(x), max(y)) + plot_params.get('offset', 5)
     # min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
 
-
-    max_entry = 1
-    min_entry = -1
+    if c==0:
+        max_entry = 1
+        min_entry = -1
+    elif c==1:
+        max_entry = 5
+        min_entry = 0
+    else:
+        raise(NotImplementedError)
     # max_entry = max(max(x), max(y)) + plot_params.get('offset', 5)
     # min_entry = min(min(x), min(y))  - plot_params.get('offset', 5)
 
@@ -119,13 +124,13 @@ def plot_parity(x, y,labels=None, **kwargs):
     plt.xticks(fontsize=plot_params.get('xticksize',24))
     plt.yticks(fontsize=plot_params.get('yticksize',24))
 
-    plt.plot([0, 0],[-100, 100],color='black',linestyle='--',alpha=0.5)
-    plt.plot([-100, 100],[0, 0],color='black',linestyle='--',alpha=0.5)
+    plt.plot([1, 1],[-100, 100],color='black',linestyle='--',alpha=0.5)
+    plt.plot([-100, 100],[1, 1],color='black',linestyle='--',alpha=0.5)
 
     if(labels is not None):
         i = 0;
         for ix,iy in zip(x,y):
-            if(countGrossErrors(ix,iy)>0):
+            if(countGrossErrors(ix,iy,c=1)>0):
                 color='red'
             else:
                 color='black'

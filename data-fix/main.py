@@ -1553,16 +1553,16 @@ if __name__ == '__main__':
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
 
     # doKNN(dc(ttd), dc(vd), splitter='kennard_stone')
-    doSVR(dc(ttd), dc(vd), splitter='kennard_stone')
+    # doSVR(dc(ttd), dc(vd), splitter='kennard_stone')
     # doNonParametricValidation(dc(ttd),dc(vd))
-    # doKPCATrainTestValid(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, splitter='kennard_stone',trainSize=0.9)
+    doKPCATrainTestValid(dc(ttd), dc(vd), randSeed=837262349, gamma=0.01, splitter='kennard_stone',trainSize=0.9)
 
     # doRFR(dc(ttd), dc(vd), randSeed=837262349, splitter='kennard_stone')
 
     # visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, trainSize=0.8, splitter='kennard_stone')
     # visualizeBest2D(dc(ttd), dc(vd), randSeed=837262349, gamma=None, splitter='kennard_stone')
     # RBFKPCALogFit(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, trainSize=0.8, splitter='kennard_stone')
-
+    
     # fitR2s = []
     # for gamma in np.linspace(0.01,0.5,100):
     #     fitR2s.append(visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=gamma))

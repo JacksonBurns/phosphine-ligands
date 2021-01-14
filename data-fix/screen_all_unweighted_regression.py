@@ -139,6 +139,7 @@ def splitData(ttd, randState=None, splitter=None, trainSize=0.80):
         s_weights_test = [ttd.s_weights[i] for i in test_idxs]
         ln_train = np.array([ttd.ln[i] for i in train_idxs])
         ln = np.array([ttd.ln[i] for i in test_idxs])
+    print(y_train)
     return X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test, ln_train, ln
 
 def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize=0.8):
@@ -174,7 +175,7 @@ def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize
                 'epsilon': [0.05,0.1,0.2,0.5,0.75,1],
                 'gamma': [0.025,0.05,0.1,0.2,0.5,1,2]
             }, cv=5, # scoring='neg_mean_absolute_error',
-            verbose=0,n_jobs=-1,
+            verbose=1,n_jobs=-1,
         )
         grid_result = gsc.fit(X_train, y_train)
         best_params = grid_result.best_params_
@@ -186,7 +187,7 @@ def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize
                 'n_neighbors': range(1,11),
                 'weights': ['distance','uniform']
             }, cv=5, # scoring='neg_mean_absolute_error',
-            verbose=0,n_jobs=-1,
+            verbose=1,n_jobs=-1,
         )
         grid_result = gsc.fit(X_train, y_train)
         best_params = grid_result.best_params_
@@ -199,7 +200,7 @@ def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize
                 'n_estimators': range(1,20,1)
             },
             cv=5, # scoring='neg_mean_absolute_error',
-            verbose=0,n_jobs=-1,
+            verbose=1,n_jobs=-1,
         )
         grid_result = gsc.fit(X_train, y_train)
         best_params = grid_result.best_params_
@@ -219,7 +220,7 @@ def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize
             param_grid={
                 'cv': range(1,6,1)
             }, cv=5, # scoring='neg_mean_absolute_error',
-            verbose=0,n_jobs=-1,
+            verbose=1,n_jobs=-1,
         )
         grid_result = gsc.fit(X_train, y_train)
         best_params = grid_result.best_params_
@@ -257,20 +258,21 @@ def doModel(model,center=0,splitter=None,randState=None, output=False, trainSize
 
 
 if __name__ == '__main__':
-    X, y, feature_weights, sample_weights, ligNames =  loadData(r'data_config.json',zeroReplace=0.01,removeLessThan=0,removeGreaterThan=None)
+    X, y, feature_weights, sample_weights, ligNames =  loadData(r'data_config.json',zeroReplace=0.01,removeLessThan=2,removeGreaterThan=None)
     ttd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
 
     X, y, feature_weights, sample_weights, ligNames =  loadData(r'validation_data_config.json',zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
 
-    plt.figure()
-    plt.suptitle('Model and Sampling Screen for NBMI (abs. yield >2%, tts=0.70, zeros=0.01)',fontsize=12)
-    models = ['BayesianRidge','SVR','KNN','RFR','kpca','LASSO','RidgeCV']
-    splitters = ['scaffold','kennard_stone']
-    for model in models:
-        for splitter in splitters:
-            plt.subplot(2, 7, models.index(model)+1+7*splitters.index(splitter))
-            doModel(model,center=0,splitter=splitter,output=False,trainSize=0.70)
-            plt.title(f'{model} with {splitter}',fontsize=8)
+    doModel('SVR',center=0,splitter='kennard_stone',output=True,trainSize=0.80)
+    # plt.figure()
+    # plt.suptitle('Model and Sampling Screen for BIR-adj (abs. yield >2%, tts=0.80, zeros=0.01)',fontsize=12)
+    # models = ['BayesianRidge','SVR','KNN','RFR','kpca','LASSO','RidgeCV']
+    # splitters = ['scaffold','kennard_stone']
+    # for model in models:
+    #     for splitter in splitters:
+    #         plt.subplot(2, 7, models.index(model)+1+7*splitters.index(splitter))
+    #         doModel(model,center=0,splitter=splitter,output=False,trainSize=0.80)
+    #         plt.title(f'{model} with {splitter}',fontsize=8)
 
     plt.show()
