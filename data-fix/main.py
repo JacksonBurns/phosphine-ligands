@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error as MAE
 from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV, RANSACRegressor, HuberRegressor
+from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV, RANSACRegressor, HuberRegressor, BayesianRidge
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.cluster import KMeans
 # helper functions defined elsewhere
@@ -35,6 +35,8 @@ from sklearn.preprocessing import MinMaxScaler
 from dcekit.sampling import kennard_stone  # NOQA
 
 from sklearn.neighbors import KNeighborsRegressor
+
+from sklearn.svm import SVR
 
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None, removeGreaterThan=None):
     """
@@ -1347,6 +1349,202 @@ def doKNN(ttd,vd,trainSize=0.8,randSeed=None,splitter=None):
 
     return
 
+def doSVR(ttd,vd,trainSize=0.8,randSeed=None,splitter=None):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
+
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ttd.ln]
+        train_names = [names[i] for i in train_idxs if names[i] in ttd.ln]
+
+        # pull the new indices
+        train_idxs = [ttd.ln.tolist().index(i) for i in train_names]
+        test_idxs = [ttd.ln.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
+    # scale features for train and test
+    X_std_train = x_scaler.fit_transform(X_train)
+    X_std_test = x_scaler.transform(X_test)
+    # scale features for validation
+    X_std_valid = x_scaler.transform(vd.X)
+
+    # scale response for train and test
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
+    # scale response for validation
+    y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
+
+    # pull variable for de-sclaing response
+    y_sigma = y_scaler.scale_
+
+    svr = SVR(kernel='rbf',C=1.0,epsilon=0.1)
+    svr.fit(X_std_train, y_std_train, sample_weight=s_weights_train.ravel())
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in svr.predict(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    # predict validation data, descale it
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in svr.predict(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
+
+    print('Training/Testing Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+    print('R2 of training data: ', svr.score(X_std_train, y_std_train))
+    print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
+
+    print('Validation Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_valid_actual,y_pred=y_valid_pred))
+    print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred)/len(y_valid_pred))
+
+    validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
+
+    return
+
+def doBayesianRidge(ttd,vd,trainSize=0.8,randSeed=None,splitter=None):
+    # instantiate scalers
+    x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+
+    # split response, features, and weights into train and test set
+    if randSeed is not None:
+        randState = randSeed
+    else:
+        randState = random.randint(1,1e9)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
+
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ttd.ln]
+        train_names = [names[i] for i in train_idxs if names[i] in ttd.ln]
+
+        # pull the new indices
+        train_idxs = [ttd.ln.tolist().index(i) for i in train_names]
+        test_idxs = [ttd.ln.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
+    # scale features for train and test
+    X_std_train = x_scaler.fit_transform(X_train)
+    X_std_test = x_scaler.transform(X_test)
+    # scale features for validation
+    X_std_valid = x_scaler.transform(vd.X)
+
+    # scale response for train and test
+    y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
+    y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
+    # scale response for validation
+    y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
+
+    # pull variable for de-sclaing response
+    y_sigma = y_scaler.scale_
+
+    br = BayesianRidge()
+    br.fit(X_std_train, y_std_train, sample_weight=s_weights_train.ravel())
+    y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in br.predict(X_std_test)]
+    y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
+    # predict validation data, descale it
+    y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in br.predict(X_std_valid)]
+    y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
+
+    print('Training/Testing Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
+    print('R2 of training data: ', br.score(X_std_train, y_std_train))
+    print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
+
+    print('Validation Data Statistics:')
+    print('Mean Absolute Error: ', MAE(y_true=y_valid_actual,y_pred=y_valid_pred))
+    print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred)/len(y_valid_pred))
+
+    validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
+
+    return
+
 if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadData(zeroReplace=0.01,removeLessThan=1,removeGreaterThan=None)
     ttd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
@@ -1354,7 +1552,8 @@ if __name__ == '__main__':
     X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
 
-    doKNN(dc(ttd), dc(vd), splitter='kennard_stone')
+    # doKNN(dc(ttd), dc(vd), splitter='kennard_stone')
+    doSVR(dc(ttd), dc(vd), splitter='kennard_stone')
     # doNonParametricValidation(dc(ttd),dc(vd))
     # doKPCATrainTestValid(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, splitter='kennard_stone',trainSize=0.9)
 
