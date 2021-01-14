@@ -1,5 +1,5 @@
 # utility libraries
-import json, os, pickle, bisect, random, types, math
+import json, os, pickle, bisect, random, types, math, sys
 from copy import deepcopy as dc
 # plotting
 import matplotlib.pyplot as plt
@@ -31,6 +31,8 @@ from scipy.stats import rankdata
 from sklearn.model_selection import cross_val_score, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
+
+from dcekit.sampling import kennard_stone  # NOQA
 
 def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None, removeGreaterThan=None):
     """
@@ -97,7 +99,7 @@ def loadData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None, rem
         pickle.dump(feature_weights, open(feature_weights_path, "wb"))
         ligNames_path = os.path.join(out_dir, 'ligand_names.p')
         pickle.dump(ligNames, open(ligNames_path, "wb"))
-    
+
     return X, y, feature_weights, sample_weights, ligNames
 
 def loadValidationData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan=None):
@@ -114,7 +116,7 @@ def loadValidationData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan
 
     df = pd.read_excel(xl_file)
     absYields = df[absolute_yield].to_numpy()
-    
+
     # remove any data which does not have our yield cutoff
     if removeLessThan is not None:
         # print("Input data set ({} total): ".format(len(df.index)),df[name_col])
@@ -138,7 +140,7 @@ def loadValidationData(zeroReplace=-1, fromXL=True, doSave=False, removeLessThan
     sample_weights = weights
     feature_weights = np.repeat(weights, len(df[descrptr_columns].columns), axis=1)  # copy columns across to match input data
     del weights
-    
+
     return X, y, feature_weights, sample_weights, ligNames
 
 def familySeparation(X,y,ligand_names,vectrs=[0,1,2]):
@@ -156,7 +158,7 @@ def familySeparation(X,y,ligand_names,vectrs=[0,1,2]):
     c = [((i+1)/2,0,(i+1)/2) for i in y] # conditional coloring
     ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
         c=c, alpha=0.75, s=50)
-    
+
     # for (x, y, z) in zip(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]]):
     #     ax.text(x,y,z,
     #         str(ligand_names.pop(0)),
@@ -169,13 +171,14 @@ def familySeparation(X,y,ligand_names,vectrs=[0,1,2]):
     plt.show()
     print('Max PC1', y[np.argmax(X_pca[:, 0])])
 
-def doWPCA(X,y,feature_weights,sample_weights,output=False,trainSize=0.8,varianceNeeded=0.95):
+def doWPCA(X,y,feature_weights,sample_weights,output=False,trainSize=0.8,varianceNeeded=0.95,randSeed=None):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
     # split response, features, and weights into train and test set
-    randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test = train_test_split(X, y, feature_weights, sample_weights, train_size=trainSize, random_state=randState)
+    if randSeed is None:
+        randSeed = random.randint(1,1e9)
+    X_train, X_test, y_train, y_test, f_weights_train, f_weights_test, s_weights_train, s_weights_test = train_test_split(X, y, feature_weights, sample_weights, train_size=trainSize, random_state=randSeed)
     # scale features
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -205,13 +208,13 @@ def doWPCA(X,y,feature_weights,sample_weights,output=False,trainSize=0.8,varianc
     lm.fit(X_std_train, y_std_train)
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
-    
-    if(output and countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.25 and MAE(y_true=y_test, y_pred=y_predict)<0.25):
+
+    if(output):# and countGrossErrors(y_test,y_predict)/len(y_predict)==0 and lm.score(X_std_train, y_std_train)>0.25 and MAE(y_true=y_test, y_pred=y_predict)<0.25):
         print('{} explained by {} eigen-vectors'.format(cum_var[n_eigenvectors_needed-1], n_eigenvectors_needed))
         print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
         print('R2 of training data: ', lm.score(X_std_train, y_std_train))
         print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
-        print('Random seed for tts: ', randState)
+        print('Random seed for tts: ', randSeed)
         plot_parity(x=y_test, y=y_predict, labels=None, xlabel='True Selectivity',ylabel='Predicted Selectivity')
 
     return lm.score(X_std_train, y_std_train),MAE(y_true=y_test, y_pred=y_predict),countGrossErrors(y_test,y_predict)/len(y_predict)
@@ -237,13 +240,13 @@ def doRidgeCV(X,y,feature_weights,sample_weights,output=False,trainSize=0.8):
     ridge = RidgeCV()
     ridge.fit(X_std_train, y_std_train.ravel(), sample_weight=s_weights_train.ravel())
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in ridge.predict(X_std_test)]
-    if(output and countGrossErrors(y_test,y_predict)/len(y_predict)==0): # and ridge.score(X_std_train, y_std_train)>0.25 and MAE(y_true=y_test, y_pred=y_predict)<0.25):
+    if(output):# and countGrossErrors(y_test,y_predict)/len(y_predict)==0): # and ridge.score(X_std_train, y_std_train)>0.25 and MAE(y_true=y_test, y_pred=y_predict)<0.25):
         print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
         print('R2 of training data: ', ridge.score(X_std_train, y_std_train))
         print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
         print('Random seed for tts: ', randState)
         plot_parity(x=y_test, y=y_predict, labels=None, xlabel='True Selectivity',ylabel='Predicted Selectivity')
-    
+
     return ridge.score(X_std_train, y_std_train),MAE(y_true=y_test, y_pred=y_predict),countGrossErrors(y_test,y_predict)/len(y_predict)
 
 def doLASSO(X,y,feature_weights,sample_weights,output=False,trainSize=0.8,cv=10):
@@ -287,7 +290,7 @@ def doKPCASeparation(X,y,vectrs=[0,1,2]):
     c = [((i+1)/2,0,(i+1)/2) for i in y] # conditional coloring
     ax.scatter(X_kpca[:, vectrs[0]], X_kpca[:, vectrs[1]], X_kpca[:, vectrs[2]], \
         c=c, alpha=0.75, s=50)
-    
+
     # for (x, y, z) in zip(X_kpca[:, vectrs[0]], X_kpca[:, vectrs[1]], X_kpca[:, vectrs[2]]):
     #     ax.text(x,y,z,
     #         str(ligand_names.pop(0)),
@@ -319,7 +322,7 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
         with open(r'ligands_names.txt','r') as file:
             # remove newlines
             names = [i.replace("\n","") for i in file.readlines()]
-        
+
         # pull the names from the list of ligands only if they are still in the data set
         test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
         train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
@@ -332,7 +335,7 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
         X_train = np.array([X[i] for i in train_idxs])
         X_test = np.array([X[i] for i in test_idxs])
         y_train = np.array([y[i] for i in train_idxs])
-        
+
         y_test = np.array([y[i] for i in test_idxs])
         # f_weights_train
         # f_weights_test = [X[i] for i in test_idxs]
@@ -340,7 +343,7 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
         # s_weights_test = [X[i] for i in test_idxs]
         ln_train = np.array([ligand_names[i] for i in train_idxs])
         ln = np.array([ligand_names[i] for i in test_idxs])
-        
+
         print('~~~~~~~~~~~')
         print(ln_train.tolist())
         print('~~~~~~~~~~~')
@@ -353,7 +356,7 @@ def doKPCA(X,y,ligand_names,sample_weights,output=False,trainSize=0.8,heatMap=Fa
     y_std_train = y_scaler.fit_transform(y_train.reshape(-1, 1))
     y_std_test = y_scaler.transform(y_test.reshape(-1, 1))
     # pull variable for de-sclaing response
-    y_sigma = y_scaler.scale_ 
+    y_sigma = y_scaler.scale_
     """
     Radial Basis Function Kernel Principal Component Regression
     """
@@ -397,7 +400,7 @@ def doKMeansClusteringWithKPCA(X,y,sample_weights,vectrs=[0,1,2]):
     kpca = KernelPCA(kernel="rbf",n_components=3)
     X_pca = kpca.fit_transform(X_scaled)
     """
-    Cluster on the first 3 components 
+    Cluster on the first 3 components
     """
     # this plot shows that 4 clusters is optimal
     inertiaList = []
@@ -410,7 +413,7 @@ def doKMeansClusteringWithKPCA(X,y,sample_weights,vectrs=[0,1,2]):
     plt.xlabel("Number of Clusters")
     plt.title("K-Means Clustering Elbow Plot")
     plt.show()
-    
+
     kmeans = KMeans(n_clusters=4)
     kmeans.fit(dc(X_pca), sample_weight=dc(sample_weights).ravel())
 
@@ -453,15 +456,15 @@ def doNonParametricValidation(ttd,vd,vectrs=[0,1,2]):
     X_pca = kpca.fit_transform(X_scaled)
     X_pca_valid = kpca.transform(X_scaled_valid)
     """
-    Cluster on the first 3 components 
+    Cluster on the first 3 components
     """
     kmeans = KMeans(n_clusters=4)
     kmeans.fit(dc(X_pca), sample_weight=dc(ttd.s_weights).ravel())
-    
+
     # plot actual values and clustering side by side
     fig = plt.figure()
     ax = fig.add_subplot(1, 2, 1, projection='3d')
-    
+
     c = [(i,0,i) for i in (ttd.y-min(ttd.y))/(max(ttd.y)-min(ttd.y))] # conditional coloring
 
     ax.scatter(X_pca[:, vectrs[0]], X_pca[:, vectrs[1]], X_pca[:, vectrs[2]], \
@@ -505,7 +508,7 @@ def doKMCWithKPCAandSHAP(X,y,sample_weights,vectrs=[0,1,2],trainSize=0.8,randSee
     else:
         randState = random.randint(1,1e9)
     X_train, X_test, y_train, y_test, s_weights_train, s_weights_test = train_test_split(X, y, sample_weights, train_size=trainSize, random_state=randState)
-    
+
     # scale features
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -563,7 +566,7 @@ def doKMeansClustering(X,y,sample_weights,output=False,varianceNeeded=0.95):
         print(np.std(y[kmeans.labels_ == label]))
         print('Max in this Cluster: ',np.max(y[kmeans.labels_ == label]))
 
-def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
+def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None,splitter=None,gamma=None):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
@@ -573,7 +576,59 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
         randState = randSeed
     else:
         randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
+
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
+        train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
+
+        # pull the new indices
+        train_idxs = [ligand_names.tolist().index(i) for i in train_names]
+        test_idxs = [ligand_names.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([X[i] for i in train_idxs])
+        X_test = np.array([X[i] for i in test_idxs])
+        y_train = np.array([y[i] for i in train_idxs])
+
+        y_test = np.array([y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        # s_weights_train
+        # s_weights_test = [X[i] for i in test_idxs]
+        ln_train = np.array([ligand_names[i] for i in train_idxs])
+        ln = np.array([ligand_names[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
     # scale features for train and test
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -587,13 +642,13 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
     y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
 
     # pull variable for de-sclaing response
-    y_sigma = y_scaler.scale_ 
+    y_sigma = y_scaler.scale_
 
     """
     Radial Basis Function Kernel Principal Component Regression
     """
     # instantiate, reduce dimensionality
-    kpca = KernelPCA(kernel="rbf",n_components=1)
+    kpca = KernelPCA(kernel="rbf",n_components=1,gamma=gamma)
     X_std_train = kpca.fit_transform(X_std_train)
     X_std_test = kpca.transform(X_std_test)
     # apply same transformation to validation data
@@ -601,16 +656,16 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
 
     # do regression
     lm = LinearRegression()
-    lm.fit(X_std_train, y_std_train)
+    lm.fit(X_std_train, y_std_train, sample_weight=s_weights_train.ravel())
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
     # predict validation data, descale it
     y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
     y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
-    
+
     print('Training/Testing Data Statistics:')
     print('Mean Absolute Error: ', MAE(y_true=y_test,y_pred=y_predict))
-    print('R2 of training data: ', lm.score(X_std_train, y_std_train))
+    print('R2 of training data: ', lm.score(X_std_train, y_std_train, sample_weight=s_weights_train))
     print('% Gross Errors: ', countGrossErrors(y_test,y_predict)/len(y_predict))
 
     print('Validation Data Statistics:')
@@ -618,10 +673,10 @@ def doKPCATrainTestValid(ttd,vd,trainSize=0.8,randSeed=None):
     print('% Gross Errors: ', countGrossErrors(y_valid_actual,y_valid_pred)/len(y_valid_pred))
 
     validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
-    
+
     return
 
-def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
+def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None, splitter=None):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
@@ -631,8 +686,59 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
         randState = randSeed
     else:
         randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
 
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
+        train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
+
+        # pull the new indices
+        train_idxs = [ligand_names.tolist().index(i) for i in train_names]
+        test_idxs = [ligand_names.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([X[i] for i in train_idxs])
+        X_test = np.array([X[i] for i in test_idxs])
+        y_train = np.array([y[i] for i in train_idxs])
+
+        y_test = np.array([y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        # s_weights_train
+        # s_weights_test = [X[i] for i in test_idxs]
+        ln_train = np.array([ligand_names[i] for i in train_idxs])
+        ln = np.array([ligand_names[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
     # scale features for train and test
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -646,7 +752,7 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
 
     # pull variable for de-sclaing response
-    y_sigma = y_scaler.scale_ 
+    y_sigma = y_scaler.scale_
 
     """
     Radial Basis Function Kernel Principal Component Regression
@@ -660,17 +766,17 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     # print(kpca.get_params())
     # print('default gamma: ',1/len(X_std_train[0,:]))
     # do regression
-    
+
     lm = LinearRegression()
-    lm.fit(X_std_train, y_std_train*y_sigma + y_scaler.mean_, sample_weight=s_weights_train.ravel()**1.5)
-    print(lm.score(X_std_train, y_std_train*y_sigma + y_scaler.mean_,sample_weight=s_weights_train**1.5))
+    lm.fit(X_std_train, y_std_train*y_sigma + y_scaler.mean_, sample_weight=s_weights_train.ravel())#**1.5)
+    print(lm.score(X_std_train, y_std_train*y_sigma + y_scaler.mean_,sample_weight=s_weights_train))#**1.5))
     print(lm.coef_, " ", lm.intercept_)
     y_predict = [(_ * y_sigma) + y_scaler.mean_ for _ in lm.predict(X_std_test)]
     y_test =[(_ * y_sigma) + y_scaler.mean_ for _ in y_std_test]
     # predict validation data, descale it
     y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
     y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
-    
+
     '''
     # **1.5 weights
     # expfit = lambda x: -437.3*np.exp(0.2699*x)+437.6*np.exp(0.2661*x)
@@ -687,7 +793,7 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     c = [(i,0,i) for i in (y_std_train-min(y_std_train))/(max(y_std_train)-min(y_std_train))] # conditional coloring
 
     plt.scatter(X_std_train[:, 0], y_std_train*y_sigma + y_scaler.mean_, \
-        c=c, alpha=0.75, s=rankdata(s_weights_train)**1.5)#=s_weights_train**1.5)
+        c=c, alpha=0.75, s=rankdata(s_weights_train)+25)#=s_weights_train**1.5)
     plt.xlabel('PC 1', fontsize=20)
     plt.ylabel(f'NBMI', fontsize=20)
     plt.title("Training Data (Weighted)", fontsize=20)
@@ -696,10 +802,10 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     plt.ylim(plt.get('ylim'))
     # plot the line the model is using
     temp = np.linspace(-1,1,100)
-    plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
+    plt.plot(temp, lm.coef_[0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
     # plt.plot(temp, expfit(temp),linestyle='--',label='RBF-KPCA',c='blue')
     # print(s_weights_train**2)
-    
+
     # plt.gca().invert_xaxis()
 
     plt.subplot(1,2,1)
@@ -713,7 +819,7 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     plt.ylim(plt.get('ylim'))
     # plot the line the model is using
     temp = np.linspace(-1,1,100)
-    plt.plot(temp, lm.coef_[0][0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
+    plt.plot(temp, lm.coef_[0]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
     # plt.plot(temp, expfit(temp),linestyle='--',label='RBF-KPCA',c='blue')
     for ix,iy,i in zip(X_std_train[:, 0],y_std_train*y_sigma + y_scaler.mean_,range(len(X_std_train[:, 0]))):
         plt.annotate(str(ln_train[i]), (ix,iy), textcoords="offset points",xytext=(0,-15), # distance from text to points (x,y)
@@ -740,7 +846,7 @@ def visualizeBest(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     plt.figure()
     validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
-def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
+def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None, splitter=None):
     # instantiate scalers
     x_scaler = StandardScaler()
     y_scaler = StandardScaler()
@@ -750,8 +856,59 @@ def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
         randState = randSeed
     else:
         randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
 
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
+        train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
+
+        # pull the new indices
+        train_idxs = [ligand_names.tolist().index(i) for i in train_names]
+        test_idxs = [ligand_names.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([X[i] for i in train_idxs])
+        X_test = np.array([X[i] for i in test_idxs])
+        y_train = np.array([y[i] for i in train_idxs])
+
+        y_test = np.array([y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        # s_weights_train
+        # s_weights_test = [X[i] for i in test_idxs]
+        ln_train = np.array([ligand_names[i] for i in train_idxs])
+        ln = np.array([ligand_names[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
     # scale features for train and test
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -765,7 +922,7 @@ def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     y_std_valid = y_scaler.transform(vd.y.reshape(-1, 1))
 
     # pull variable for de-sclaing response
-    y_sigma = y_scaler.scale_ 
+    y_sigma = y_scaler.scale_
 
     """
     Radial Basis Function Kernel Principal Component Regression
@@ -779,7 +936,7 @@ def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     # print(kpca.get_params())
     # print('default gamma: ',1/len(X_std_train[0,:]))
     # do regression
-    
+
     lm = LinearRegression()
     lm.fit(X_std_train, y_std_train*y_sigma + y_scaler.mean_, sample_weight=s_weights_train.ravel()**1.5)
     print(lm.score(X_std_train, y_std_train*y_sigma + y_scaler.mean_,sample_weight=s_weights_train**1.5))
@@ -789,7 +946,7 @@ def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     # predict validation data, descale it
     y_valid_pred = [(i*y_sigma) + y_scaler.mean_ for i in lm.predict(X_std_valid)]
     y_valid_actual = [(i * y_sigma) + y_scaler.mean_ for i in y_std_valid]
-    
+
     # plot actual values and fitted line
     plt.figure()
     ax = plt.subplot(1,2,2,projection='3d')
@@ -823,7 +980,7 @@ def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     # plot the line the model is using
     temp = np.linspace(-0.5,0.5,100)
     ax.plot(temp, temp, lm.coef_[0][0]*temp + lm.coef_[0][1]*temp + lm.intercept_,linestyle='--',label='RBF-KPCA',c='blue')
-    
+
     # for ix,iy,i in zip(X_std_train[:, 0],y_std_train*y_sigma + y_scaler.mean_,range(len(X_std_train[:, 0]))):
     #     plt.annotate(str(ln_train[i]), (ix,iy), textcoords="offset points",xytext=(0,-15), # distance from text to points (x,y)
     #                         ha='center',  # horizontal alignment can be left, right or center
@@ -848,7 +1005,7 @@ def visualizeBest2D(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
 
     validationPlot(x=y_test, y=y_predict,x_valid=y_valid_actual,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
-def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
+def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None, splitter=None):
     # instantiate scalers
     x_scaler = StandardScaler()
 
@@ -857,8 +1014,59 @@ def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
         randState = randSeed
     else:
         randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
 
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
+        train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
+
+        # pull the new indices
+        train_idxs = [ligand_names.tolist().index(i) for i in train_names]
+        test_idxs = [ligand_names.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([X[i] for i in train_idxs])
+        X_test = np.array([X[i] for i in test_idxs])
+        y_train = np.array([y[i] for i in train_idxs])
+
+        y_test = np.array([y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        # s_weights_train
+        # s_weights_test = [X[i] for i in test_idxs]
+        ln_train = np.array([ligand_names[i] for i in train_idxs])
+        ln = np.array([ligand_names[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
     # scale features for train and test
     X_std_train = x_scaler.fit_transform(X_train)
     X_std_test = x_scaler.transform(X_test)
@@ -876,14 +1084,14 @@ def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     X_std_valid = kpca.transform(X_std_valid)
     '''
     When plotted as NBMI vs. PC1, there is a somewhat obvious logarithmic distribution to the data.
-    To fit a curve to this, first translate the data into the domain of the natural log and then 
+    To fit a curve to this, first translate the data into the domain of the natural log and then
     take the ln of all NBMI.
     '''
     tlt = 1.01
     y_train_logd = np.log(y_train+tlt)
     y_test_logd = np.log(y_test+tlt)
     y_valid_logd = np.log(vd.y+tlt)
-    
+
     # do OLS regression
     lm = LinearRegression()
     lm.fit(X_std_train, y_train_logd, sample_weight=s_weights_train.ravel())
@@ -957,14 +1165,65 @@ def RBFKPCALogFit(ttd, vd, randSeed=None, trainSize=0.8, gamma=None):
     plt.figure()
     validationPlot(x=y_test, y=y_predict,x_valid=vd.y,y_valid=y_valid_pred, labels=ln, valid_labels=vd.ln, xlabel='True Selectivity',ylabel='Predicted Selectivity',s=30)
 
-def doRFR(ttd, vd, trainSize=0.8, randSeed=None):
+def doRFR(ttd, vd, trainSize=0.8, randSeed=None, splitter=None):
     # split response, features, and weights into train and test set
     if randSeed is not None:
         randState = randSeed
     else:
         randState = random.randint(1,1e9)
-    X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    if splitter is None:
+        X_train, X_test, y_train, y_test, s_weights_train, s_weights_test, ln_train, ln = train_test_split(ttd.X, ttd.y, ttd.s_weights, ttd.ln, train_size=trainSize, random_state=randState)
+    elif splitter == 'scaffold':
+        # returns a list of indices for the two sets
+        train_idxs, test_idxs = get_scaffold_idxs()
 
+        # file containing all of the ligand names
+        with open(r'ligands_names.txt','r') as file:
+            # remove newlines
+            names = [i.replace("\n","") for i in file.readlines()]
+
+        # pull the names from the list of ligands only if they are still in the data set
+        test_names = [names[i] for i in test_idxs if names[i] in ligand_names]
+        train_names = [names[i] for i in train_idxs if names[i] in ligand_names]
+
+        # pull the new indices
+        train_idxs = [ligand_names.tolist().index(i) for i in train_names]
+        test_idxs = [ligand_names.tolist().index(i) for i in test_names]
+
+        # write the training and testing data
+        X_train = np.array([X[i] for i in train_idxs])
+        X_test = np.array([X[i] for i in test_idxs])
+        y_train = np.array([y[i] for i in train_idxs])
+
+        y_test = np.array([y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        # s_weights_train
+        # s_weights_test = [X[i] for i in test_idxs]
+        ln_train = np.array([ligand_names[i] for i in train_idxs])
+        ln = np.array([ligand_names[i] for i in test_idxs])
+
+        print('~~~~~~~~~~~')
+        print(ln_train.tolist())
+        print('~~~~~~~~~~~')
+    elif splitter == 'kennard_stone':
+        # get the appropriate number of training samples
+        temp, _ = train_test_split(ttd.y)
+        train_idxs, test_idxs = kennard_stone(ttd.y.reshape(-1, 1),len(temp))
+        # print([ttd.y[i] for i in train_idxs])
+        # write the training and testing data
+        X_train = np.array([ttd.X[i] for i in train_idxs])
+        X_test = np.array([ttd.X[i] for i in test_idxs])
+        y_train = np.array([ttd.y[i] for i in train_idxs])
+        y_test = np.array([ttd.y[i] for i in test_idxs])
+        # f_weights_train
+        # f_weights_test = [X[i] for i in test_idxs]
+        s_weights_train = np.array([ttd.s_weights[i] for i in train_idxs])
+        s_weights_test = [ttd.s_weights[i] for i in test_idxs]
+        ln_train = np.array([ttd.ln[i] for i in train_idxs])
+        ln = np.array([ttd.ln[i] for i in test_idxs])
+    else:
+        raise(NotImplementedError)
     # Perform Grid-Search
     gsc = GridSearchCV(
         estimator=RandomForestRegressor(),
@@ -980,7 +1239,7 @@ def doRFR(ttd, vd, trainSize=0.8, randSeed=None):
     grid_result = gsc.fit(X_train, y_train, s_weights_train.ravel())
     best_params = grid_result.best_params_
     print("best params: ",best_params, "MAE: ",-1*grid_result.best_score_)
-    
+
     rfr = RandomForestRegressor(max_depth=best_params["max_depth"], n_estimators=best_params["n_estimators"],random_state=False, verbose=False)
     rfr.fit(X_train, y_train, s_weights_train.ravel())
     print("RFR R2: ",rfr.score(X_train, y_train, s_weights_train))
@@ -994,15 +1253,15 @@ if __name__ == '__main__':
 
     X, y, feature_weights, sample_weights, ligNames =  loadValidationData(zeroReplace=0.01,removeLessThan=-1)
     vd = types.SimpleNamespace(X=X, y=y, f_weights=feature_weights, s_weights=sample_weights, ln=ligNames)
-    
-    doNonParametricValidation(dc(ttd),dc(vd))
-    # doKPCATrainTestValid(dc(ttd), dc(vd), randSeed=837262349)
 
-    #doRFR(dc(ttd),dc(vd),randSeed=837262349)
+    # doNonParametricValidation(dc(ttd),dc(vd))
+    # doKPCATrainTestValid(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, splitter='kennard_stone',trainSize=0.9)
 
-    visualizeBest(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.8)
-    visualizeBest2D(dc(ttd), dc(vd), randSeed=None, gamma=None)
-    RBFKPCALogFit(dc(ttd), dc(vd), randSeed=None, gamma=None, trainSize=0.95)
+    # doRFR(dc(ttd), dc(vd), randSeed=837262349, splitter='kennard_stone')
+
+    visualizeBest(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, trainSize=0.8, splitter='kennard_stone')
+    # visualizeBest2D(dc(ttd), dc(vd), randSeed=837262349, gamma=None, splitter='kennard_stone')
+    RBFKPCALogFit(dc(ttd), dc(vd), randSeed=837262349, gamma=0.05, trainSize=0.8, splitter='kennard_stone')
     input()
 
     # fitR2s = []
@@ -1015,10 +1274,10 @@ if __name__ == '__main__':
     # familySeparation(dc(X),dc(y),dc(ligNames))
     # R2s=[]; MAEs=[]; GEs=[]; testR2s=[];
     # for i in range(0,10000):
-        # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-        # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
+    # R2, mae, GE = doWPCA(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True, randSeed=837262349)
+    # R2, mae, GE = doRidgeCV(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
         # R2, mae, GE = doLASSO(dc(X),dc(y),dc(feature_weights),dc(sample_weights),output=True)
-    # R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter='scaffold' , randSeed=837262349)
+    # R2, mae, GE, alsoR2 = doKPCA(dc(X),dc(y),dc(ligNames),dc(sample_weights),output=True,heatMap=False, splitter=None , randSeed=837262349)
         # R2s.append(R2); MAEs.append(mae); GEs.append(GE); testR2s.append(alsoR2);
     # doKPCASeparation(dc(X),dc(y))
     # doKMeansClusteringWithKPCA(dc(X),dc(y),dc(sample_weights))
@@ -1036,3 +1295,5 @@ if __name__ == '__main__':
     # print("""Average R2: {:.2f} Standard Deviation: {:.2f}""".format(np.average(R2s),np.std(R2s)))
     # print("""Average MAE: {:.2f} Standard Deviation: {:.2f}""".format(np.average(MAEs),np.std(MAEs)))
     # print("""Average Testing R2: {:.2f} Standard Deviation: {:.2f}""".format(np.average(testR2s),np.std(testR2s)))
+
+    # input()
